@@ -1,0 +1,91 @@
+/* DraftSlate Animation Classes */
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Card interactions */
+.ds-card-interactive {
+  transition: transform var(--ds-anim-fast) var(--ds-ease-out),
+              box-shadow var(--ds-anim-fast) var(--ds-ease-out);
+}
+
+.ds-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--ds-shadow-md);
+}
+
+.ds-card-interactive:active {
+  transform: translateY(0);
+}
+
+/* Slide transitions */
+.ds-slide-up-enter-active {
+  animation: slideUp var(--ds-anim-slow) var(--ds-ease-out);
+}
+
+.ds-slide-up-leave-active {
+  animation: slideUp var(--ds-anim-slow) var(--ds-ease-out) reverse;
+}
+
+/* Fade transition */
+.ds-fade-enter-active,
+.ds-fade-leave-active {
+  transition: opacity var(--ds-anim-normal) var(--ds-ease-out);
+}
+
+.ds-fade-enter-from,
+.ds-fade-leave-to {
+  opacity: 0;
+}
+
+/* Page transitions */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity var(--ds-anim-normal) var(--ds-ease-out);
+}
+
+.page-enter-from,
+.page-leave-to {
+  opacity: 0;
+}
+
+/* Toast notification */
+@keyframes toastSlideDown {
+  0% { transform: translateY(-100%); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+.ds-toast-enter {
+  animation: toastSlideDown var(--ds-anim-normal) var(--ds-ease-out);
+}
+
+/* Gradient animation for marketing hero */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.ds-gradient-animated {
+  background-size: 200% 200%;
+  animation: gradientShift 8s ease-in-out infinite;
+}
+
+/* Feature card entrance */
+@keyframes featureCardEntrance {
+  0% { transform: translateY(30px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+.ds-feature-card-enter {
+  animation: featureCardEntrance var(--ds-anim-slow) var(--ds-ease-out) both;
+}

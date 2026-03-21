@@ -1,0 +1,1897 @@
+================================================================================
+  DRAFTSLATE — PRODUCT SPECIFICATION DOCUMENT
+  Plain-English Foundation Document (Pre-Technical Reference)
+  Version 1.0 | March 2026
+================================================================================
+
+This document describes the full product concept, gameplay mechanics, business
+model, user roles, system behaviors, and technical constraints for the DraftSlate
+platform. It is written in plain English and is intended to serve as the
+source of truth from which a formal technical architecture document (.md) and
+Claude Code implementation plan will be derived.
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+
+  1.  Product Overview
+  2.  Core Concept & Gameplay Philosophy
+  3.  User Roles & Account Types
+  4.  League System
+  5.  The Draft
+  6.  Slate Management
+  7.  Weekly Matchup Scoring
+  8.  Season Structure & Championship
+  9.  Money, Payouts & Platform Revenue
+  10. Subscription & Monetization Model
+  11. Odds Integration (the-odds-api.com)
+  12. Notifications & Real-Time Considerations
+  13. Mobile & Tablet UX Philosophy
+  14. Frontend Views & Core User Flows
+  15. Tech Stack Overview
+  16. Backend Architecture & Job Queue Philosophy
+  17. API Rate Limiting & Throttling Strategy
+  18. Data Models (Conceptual, Plain English)
+  19. User Career Stats & Profile Analytics
+  20. Key Business Rules & Constraints
+  21. Future Considerations (Out of MVP Scope)
+
+
+================================================================================
+1. PRODUCT OVERVIEW
+================================================================================
+
+DraftSlate is a competitive fantasy-style sports platform where users manage
+a "team" made up of sportsbook-style slate picks rather than real
+athletes. Think of it as fantasy football, except instead of drafting Patrick
+Mahomes or Travis Kelce, you are drafting specific slate picks — for
+example: "Rashee Rice will record 7 or more receptions against the Bears on
+Sunday."
+
+Each week, league members participate in a live draft to select their slate for
+the upcoming slate of games. Those picks are assigned to either their starting
+lineup or bench. At the end of the week, each user is matched head-to-head
+against another league member, and whoever's starting slate produces more
+correct slate picks wins that matchup — exactly like a fantasy football win/loss
+record.
+
+At the end of the season, the user with the best win/loss record (or the winner
+of a playoff bracket, depending on league settings) wins the league pot. The
+platform takes a 10% commission from the total pot; the rest is distributed to
+the winner(s) per the commissioner's configured payout structure.
+
+The MVP focuses exclusively on NFL. All slate picks are NFL-based player
+props and game slate picks pulled from the-odds-api.com.
+
+
+================================================================================
+2. CORE CONCEPT & GAMEPLAY PHILOSOPHY
+================================================================================
+
+The central idea bridges two popular but distinct worlds:
+
+  - Fantasy Sports: season-long competition, weekly matchups, head-to-head
+    records, rosters, drafts, standings, and playoffs.
+
+  - Sports Betting / slate Apps: outcome-based predictions with real odds,
+    over/under player props, spread and moneyline picks.
+
+What makes DraftSlate unique is the combination of:
+
+  a) A live weekly draft where users compete to claim the best available slate picks
+     before their opponents do — introducing strategy and scarcity.
+
+  b) A head-to-head matchup format with win/loss records, standings, and
+     playoffs — giving the season meaning beyond a single week.
+
+  c) An odds floor system that ensures picks are not trivially safe — users
+     cannot stack their slate with -800 near-certainties. By default, every
+     pick must meet a global minimum odds threshold (default: -250, meaning
+     no single pick can be more than roughly a 71% implied probability
+     favorite). This floor is commissioner-configurable per league. Leagues
+     can also go further and enforce per-slot odds targets, where each
+     starting slot has a specific required odds band rather than a single
+     floor — see Section 5.4 for full details.
+
+  d) Active slate management throughout the week — odds shift after the draft,
+     games get closer, injury news breaks. Users must swap bench slate into
+     their starting slate strategically before game time locks their selections.
+
+  e) A social, commissioner-led league experience with private groups of friends
+     or public competitive leagues.
+
+The platform is designed to feel familiar to fantasy sports players while
+layering in the excitement and strategy of odds-based predictions.
+
+
+================================================================================
+3. USER ROLES & ACCOUNT TYPES
+================================================================================
+
+--- 3.1 Guest / Unauthenticated User ---
+
+Can browse the marketing site and see public league leaderboards (read-only).
+Cannot participate in any league activity or draft. Must register to play.
+
+--- 3.2 Registered User (Free Tier) ---
+
+A standard registered account. Can:
+  - Join public or private leagues (via invite code for private leagues)
+  - Participate in drafts for any league they belong to
+  - Manage their slate week-to-week
+  - Customize their team name, team logo, and profile avatar
+  - View their personal stats, history, and pick accuracy over time
+  - Create up to 1 public league AND 1 private league as commissioner (free)
+
+--- 3.3 Commissioner ---
+
+Any registered user who creates a league becomes the commissioner of that
+league. The commissioner has elevated permissions within their league:
+
+  - Set league name, size (number of teams), and league type (public/private)
+  - Configure slate size (total picks per roster, default: 8 — 5 starters + 3 bench)
+  - Configure minimum aggregate odds threshold for draft selections
+  - Set the buy-in amount per team (how much each member contributes to the pot)
+  - Set payout structure (e.g., 100% to 1st, or 90% to 1st / 10% to 2nd, etc.)
+  - Set draft format settings (draft window duration, randomization behavior)
+  - Invite members to private leagues via a shareable invite code
+  - Remove members from a league before the season starts
+  - Cannot change buy-in or payout settings after the season begins
+
+Free-tier commissioners can manage 1 public + 1 private league simultaneously.
+Subscribed commissioners can create and manage unlimited leagues.
+
+--- 3.4 Platform Admin ---
+
+Internal staff role. Can manage all leagues, users, payouts, and platform
+settings. Not part of the user-facing product — admin panel only.
+
+
+================================================================================
+4. LEAGUE SYSTEM
+================================================================================
+
+--- 4.1 League Types ---
+
+PUBLIC LEAGUE: Listed in a league browser. Any registered user can join up to
+the league's maximum team count. No invite code required.
+
+PRIVATE LEAGUE: Not listed publicly. Users can only join with a commissioner-
+issued invite code or direct link.
+
+--- 4.2 League Settings (Configured at Creation) ---
+
+  - League name
+  - League type: public or private
+  - Maximum number of teams (e.g., 8, 10, 12, 14 — must be even for matchups)
+  - Buy-in amount per team (in USD, minimum $5)
+  - Payout structure (configurable percentage splits across 1st, 2nd, etc.)
+  - Total slate size (default: 8 — 5 starters + 3 bench)
+  - Odds enforcement mode: Global Minimum Floor (default) or Per-Slot Odds Bands
+      - If Global Floor: configurable minimum odds value (default: -250)
+      - If Per-Slot Bands: per-slot min/max odds pairs for each starting slot,
+        plus optional bench floor
+  - Weekly draft day (default: Tuesday) and draft start time
+  - Draft pick timer duration (how long each user has per slate pick; default: 60s)
+  - Season length (number of weeks, default: follows NFL regular season weeks)
+  - Playoff format (see Section 8 for full playoff configuration options)
+
+Settings are locked once the season begins (after the first draft concludes).
+The commissioner may update league name and invite settings at any time.
+
+--- 4.3 League States ---
+
+PENDING: League created, not yet full. Members can join. Season has not started.
+
+ACTIVE: Season is in progress. Weekly drafts, matchups, and slate management
+are occurring.
+
+PLAYOFFS: If enabled, the top N teams by win/loss record enter a single-
+elimination playoff bracket at the end of the regular season.
+
+COMPLETED: Season finished. Payouts have been distributed. League is archived
+and read-only.
+
+CANCELLED: Commissioner cancelled the league before it started. All collected
+buy-ins are fully refunded to members.
+
+--- 4.4 Joining a League ---
+
+Users browsing public leagues see: league name, commissioner, current/max team
+count, buy-in amount, and the week the season starts. They click "Join" and are
+prompted to pay their buy-in before their spot is reserved.
+
+For private leagues, users receive a shareable invite link or alphanumeric code.
+They still pay the buy-in during the join flow.
+
+A user may not join a league after the season has begun (Week 1 draft has
+started or concluded).
+
+--- 4.5 Buy-In Payment & Trust Holding ---
+
+When a user joins a league, they pay the configured buy-in amount through the
+platform's payment processor (Stripe). The funds are held in the platform's
+trust account — they are not released to any winner until the season concludes
+and a champion is determined.
+
+If a league is cancelled before the season begins, all buy-ins are refunded in
+full. Refund logic is automated via a background job.
+
+--- 4.6 Team Identity ---
+
+Each user in a league has a "team" associated with that league. Team fields:
+  - Team name (user-customizable, profanity filtered)
+  - Team logo (user-uploaded image or selected from a preset library)
+  - Owner (the user account)
+
+Users can have different team identities in each league they belong to.
+
+
+================================================================================
+5. THE DRAFT
+================================================================================
+
+--- 5.1 What Gets Drafted ---
+
+The available slate pool each week is a curated set of NFL slate picks
+pulled from the-odds-api.com. These are player props and game outcome
+predictions tied to the upcoming week's NFL games.
+
+Examples of draft selections:
+  - "Patrick Mahomes passes for 280+ yards vs. the Raiders" (odds: -160)
+  - "Ja'Marr Chase records 6+ receptions vs. the Steelers" (odds: +110)
+  - "Bills win by 7+ points over the Jets" (odds: -130)
+  - "Saquon Barkley rushes for 80+ yards vs. the Cowboys" (odds: -200)
+
+Each draft selection has:
+  - A plain-English description of the outcome
+  - The sport (NFL in MVP)
+  - The game it belongs to (team matchup + date/time)
+  - Current American odds at the time of slate pool creation
+  - A lock time (when the game starts — picks lock before kickoff)
+
+--- 5.2 Slate Pool Curation & Timing ---
+
+The slate pool is assembled immediately before the draft window opens each week.
+A background job fires automatically at the scheduled draft start time (or just
+prior — see below), fetches the latest available NFL odds from the-odds-api.com,
+filters eligible picks, and makes the pool live to all league members. This
+ensures that the odds snapshot used for the draft reflects the most current
+available market data rather than data that may be hours or days stale.
+
+DRAFT TIMING: The default draft day is Tuesday night (configurable per league
+by the commissioner — see Section 4.2). Tuesday is the ideal default because:
+  - All Sunday and Monday Night Football games from the prior week have
+    concluded, keeping users engaged with fresh results
+  - The upcoming week's game lines and player props are freshly posted by
+    bookmakers following the prior week's final game
+  - It gives users the full week (Wednesday through the weekend) for slate management
+    management before Sunday games kick off
+
+The commissioner may shift the draft day/time to any day and time of their
+choosing when creating the league. Common alternatives include Wednesday night
+or Thursday afternoon (before Thursday Night Football kicks off).
+
+DRAFT POOL BUILD JOB TIMING: The SLATE_POOL_BUILD_JOB fires automatically
+approximately 15–30 minutes before the scheduled draft start time. This short
+pre-draft window allows the job to complete and the pool to be ready for users
+when the draft lobby opens, while ensuring the odds are as fresh as possible.
+The draft itself does not start until the job has completed successfully —
+if the job fails or times out, a retry is triggered and a brief draft delay
+notification is sent to all league members.
+
+CRITICAL DESIGN DECISION: The slate pool is intentionally built from picks
+whose games are far enough in the future that odds movement during the 3–4 hour
+draft window will be minimal. For the NFL on a Tuesday night draft, this means:
+
+  - The current week's Sunday and Monday Night games are the primary pick
+    source — their kickoffs are 4–6 days away, so odds are reasonably stable
+    during the draft window
+  - Thursday Night Football picks for the current week are EXCLUDED from the
+    slate pool if the Thursday game is within 24 hours of the draft time,
+    since odds for imminent games move rapidly and the draft window could
+    overlap with or run close to kickoff
+  - Thursday Night Football picks for a Thursday game that is more than 24
+    hours away (e.g., a commissioner has set a Monday or early-Wednesday
+    draft) may be included at the platform's discretion — configurable via
+    platform settings
+
+The platform uses snapshot odds (frozen at slate pool creation time, i.e., the
+moment the SLATE_POOL_BUILD_JOB runs) for purposes of verifying the minimum
+odds threshold — not live odds at the moment of each user's individual pick
+selection during the draft.
+
+--- 5.3 Draft Format ---
+
+The draft is a SNAKE DRAFT format. Draft order each week is determined by a
+weighted randomization system designed to provide competitive parity — teams
+that performed worse the prior week are given a higher probability of drawing
+an earlier pick, without the outcome being fully deterministic.
+
+WEIGHTED DRAFT ORDER SYSTEM:
+
+  At the start of each week's draft, the system calculates a draft order weight
+  for every team in the league based on their correct pick count from the
+  previous week's starting slate. Teams with fewer correct slate picks receive a
+  higher weight (greater probability of drawing an early position); teams with
+  more correct slate picks receive a lower weight.
+
+  The weighting formula assigns each team a weight inversely proportional to
+  their prior week's correct pick count. A simple implementation:
+
+    weight = (max_possible_correct_picks - prior_week_correct_picks) + 1
+
+  For example, in a league with 5 starting slots (max 5 correct slate picks):
+    Team with 0 correct slate picks last week → weight of 6  (highest chance)
+    Team with 1 correct pick last week  → weight of 5
+    Team with 2 correct slate picks last week → weight of 4
+    Team with 3 correct slate picks last week → weight of 3
+    Team with 4 correct slate picks last week → weight of 2
+    Team with 5 correct slate picks last week → weight of 1  (lowest chance)
+
+  Draft positions are then drawn sequentially — position 1 first, then
+  position 2, and so on — using weighted random selection without replacement.
+  A team already assigned a position is removed from the pool before the next
+  position is drawn.
+
+  This means a team that went 0-for-5 last week is six times more likely to
+  land the first pick than a team that went 5-for-5 — but the top performer
+  still has a non-zero chance of drawing an early position, preserving
+  unpredictability and preventing the draft order from being fully anticipated
+  or strategized around.
+
+WEEK 1 EXCEPTION:
+  There is no prior week data for the season's first draft. Week 1 draft order
+  is determined by pure random draw (all teams weighted equally).
+
+SNAKE FORMAT:
+  Once positions are assigned via weighted draw, the draft proceeds in standard
+  snake format: Round 1 goes position 1 → N, Round 2 goes N → 1, Round 3 goes
+  1 → N, and so on. In a 10-team league with 8 slate spots, there are 8 rounds.
+
+DRAFT ORDER DISPLAY:
+  The weighted draw results are published to all league members when the draft
+  lobby opens (i.e., after the SLATE_POOL_BUILD_JOB completes and the draft
+  enters the ready state). Members can see the full pick order before the draft
+  begins. The prior week scores that produced the weighting are also displayed
+  for transparency.
+
+PLAYOFF DRAFT ORDER:
+  During playoff weeks, only the teams still active in the bracket participate
+  in that week's draft. Weighting is applied the same way using the prior
+  week's playoff matchup scores. Teams eliminated from the winners bracket but
+  still playing in the losers bracket are included in their bracket's draft.
+
+--- 5.4 Minimum Odds Threshold & Per-Slot Odds Configuration ---
+
+The platform supports two distinct odds enforcement modes, configured per league
+by the commissioner at league creation. These are mutually exclusive — a league
+uses one mode or the other, not both simultaneously.
+
+MODE 1 — GLOBAL MINIMUM ODDS FLOOR (default)
+
+  Every pick a user selects during the draft must have odds AT or ABOVE the
+  league's configured minimum threshold at the time the slate pool snapshot
+  was taken. The default threshold is -250 American odds.
+
+  Understanding the threshold direction:
+    - A pick with odds of -200 is ALLOWED (less favored than -250 = more risk)
+    - A pick with odds of -300 is NOT ALLOWED (more favored than -250 = too safe)
+    - A pick with odds of +150 is ALLOWED (underdog = easily clears the floor)
+    - A pick with odds of -250 is ALLOWED (exactly meets the floor)
+
+  The threshold is global and per-pick — each individual pick must independently
+  clear the floor. There is no averaging or aggregate loophole. The commissioner
+  can set this value to any American odds value when configuring the league.
+  Common examples:
+
+    -150   tight floor — only strong favorites are restricted
+    -250   default — moderate favorites allowed, heavy favorites blocked
+    -400   loose floor — most picks qualify; only near-certainties blocked
+    +100   strict floor — only even-money or underdog picks allowed (very
+           aggressive league setting for high-variance gameplay)
+
+  The system enforces this at the UI level (ineligible picks are grayed out or
+  hidden during the draft) and at the server level upon pick submission.
+
+MODE 2 — PER-SLOT ODDS BANDS (advanced, commissioner-configured)
+
+  Instead of a single global floor, the commissioner defines an explicit odds
+  target for each starting slate slot. Each slot has a required odds band —
+  a range of American odds within which the slate pick drafted into that slot must
+  fall (using snapshot odds at slate pool creation time). Bench slots are not
+  subject to slot odds requirements and only need to clear a configurable
+  bench minimum floor (default: no restriction on bench slate in this mode).
+
+  This mode creates deliberate strategic layers in the roster. Users must draft
+  one slate pick per required odds band, introducing portfolio-style construction
+  rather than a free-for-all within a single floor.
+
+  EXAMPLE CONFIGURATION (5 starting slots):
+    Slot 1 (High Risk):    +100 or better (even money or underdog)
+    Slot 2 (Medium Risk):  Between -100 and +99
+    Slot 3 (Moderate):     Between -250 and -101
+    Slot 4 (Lower Risk):   Between -500 and -251
+    Slot 5 (Safe Anchor):  -501 or worse (heavy favorite anchor pick)
+
+  Each slot band is defined as a min and max American odds value. A pick is
+  eligible for a given slot if its snapshot odds fall within that band. During
+  the draft, users select which slot they are drafting a slate pick into (or the UI
+  guides them with available slot options per slate pick). A slate pick can only fill one
+  slot, and each slot can only hold one slate pick.
+
+  HOW BANDS ARE EXPRESSED IN SETTINGS:
+  The commissioner defines slot bands as an ordered list of (min_odds, max_odds)
+  pairs — one pair per starting slot. The number of pairs must equal the
+  configured number of starting slots. Bench slots inherit a separate optional
+  bench floor (defaults to unrestricted in this mode).
+
+  DRAFT BEHAVIOR IN MODE 2:
+    - The available slate pick list during the draft shows which slots each slate pick is
+      eligible for based on its odds band
+    - A user selects a slate pick and the slot they want to place it in; the system
+      validates eligibility server-side
+    - Auto-pick (on timer expiry) selects the highest-odds pick available for
+      the user's next unfilled slot, in slot order (Slot 1 first)
+    - If no eligible pick exists for a required slot (pool exhausted for that
+      band), the slot remains empty and scores 0 for the week — this is an
+      edge case the commissioner should guard against by ensuring the draft
+      pool is large enough relative to league size and slot band widths
+
+  COMMISSIONER UI FOR MODE 2:
+  The league settings screen presents a slot configuration table where the
+  commissioner sets the number of starting slots and defines the odds band
+  for each slot. The UI validates that bands do not overlap and that the
+  overall structure is sensible (e.g., warns if a band is so narrow that
+  few picks will ever qualify for it given typical NFL odds ranges).
+
+BENCH PICKS (BOTH MODES):
+  Bench picks in Mode 1 must also clear the global minimum floor.
+  Bench picks in Mode 2 are subject to the separate bench floor only
+  (default: no restriction). This allows users to hold speculative high-
+  upside bench slate as potential swap-ins without odds constraints.
+
+--- 5.5 Draft Interface ---
+
+The draft screen is the most time-sensitive and interactive screen in the app.
+It must be fast, mobile-optimized, and clear. Key UI elements:
+
+  - A countdown timer prominently displayed showing seconds remaining for the
+    current pick
+  - The current drafter's name/team highlighted clearly
+  - A sortable/filterable list of available slate picks (by game, by odds, by player,
+    by position/category)
+  - Each pick shows: description, game, game time, odds, and eligibility status
+  - A "your roster" panel showing what the current user has already selected
+    and remaining empty slots
+  - All teams' current roster builds visible (opponents can see what's been
+    drafted, just like fantasy)
+  - Auto-pick behavior is clearly communicated via a notification or countdown
+    warning when a user's time is almost expired
+
+--- 5.6 Draft Scheduling ---
+
+The commissioner sets a draft day and time when creating the league. The
+platform default is Tuesday night (e.g., 8:00 PM local time or a platform-
+configured default time zone). This default is editable — the commissioner
+can choose any day and time that works for their league.
+
+Users receive reminders via push notification and/or email in advance of the
+draft (e.g., 24 hours before, 1 hour before, 15 minutes before). The draft
+begins at the scheduled time regardless of whether all users are present —
+absent users are served by the auto-pick system.
+
+The SLATE_POOL_BUILD_JOB fires automatically 15–30 minutes before the
+scheduled draft start time (see Section 5.2). The draft lobby shows a
+"preparing slate pool" state during this window, then transitions to "draft
+live" once the job completes. If the build job is still running when the
+scheduled start time arrives, the draft is held in the lobby state until
+the job completes (with a visible status indicator for users), then starts
+immediately upon completion.
+
+
+================================================================================
+6. SLATE MANAGEMENT
+================================================================================
+
+--- 6.1 Roster Structure ---
+
+After the draft, each user has a full slate for that week. By default:
+
+  - 5 STARTING SLATE slots (these picks count toward the matchup score)
+  - 3 BENCH slots (held in reserve; can be swapped into the starting slate)
+  - 8 TOTAL slate spots (configurable per league by commissioner)
+
+The starting slate is what determines win/loss for the week. Bench picks do
+not count toward the score — they are available as swaps.
+
+--- 6.2 Slate Swapping (Active Management) ---
+
+Between the conclusion of the draft and the lock time of each game, users can
+swap picks between their starting slate and bench. This is the core
+"management" skill layer of the game:
+
+  - Users may move a bench pick to a starting slot (and vice versa) at any time
+    before the relevant game's lock time (kickoff)
+  - Once a game's kickoff time passes, the slate picks for that game are LOCKED in
+    their current position (starter or bench) and cannot be moved
+  - A user might move a slate pick to the bench if they see injury news or a line
+    movement that makes a slate pick less confident
+  - A user might promote a bench pick if they see favorable conditions develop
+    (e.g., key defensive player ruled out for the opponent)
+
+--- 6.3 Slate Lock Logic ---
+
+Each pick is tied to a specific NFL game. The pick's lock time equals the
+game's scheduled kickoff time. The system enforces this via server-side
+validation — client-side timers are for UX guidance only and are not trusted
+for lock enforcement.
+
+If a slate pick is in the starting slate at its lock time, it is permanently locked
+as a starter for that week. If it is on the bench at lock time, it is
+permanently locked as a bench pick and will not count toward the matchup score
+regardless of its outcome.
+
+--- 6.4 Odds Display During Slate Management ---
+
+After the draft, the app displays LIVE odds from the-odds-api.com alongside
+each drafted pick. This allows users to see how odds have moved since the draft.
+
+IMPORTANT: Live odds are for informational/UX purposes only. The outcome of a
+pick is binary — it either hit or it didn't — regardless of odds movement.
+Odds movement is a signal for the user to reconsider a slate pick's value, but it
+does not change the scoring of the slate pick.
+
+The platform fetches updated odds on a scheduled basis (e.g., every few hours)
+to keep the displayed odds reasonably current without burning through API quota.
+See Section 11 and Section 17 for API rate limit handling.
+
+
+================================================================================
+7. WEEKLY MATCHUP SCORING
+================================================================================
+
+--- 7.1 Head-to-Head Format ---
+
+Each week, every team in the league is randomly matched against exactly one
+other team (with no repeated matchup in the same regular season week, where
+possible). This follows the standard fantasy football matchup model.
+
+--- 7.2 Scoring ---
+
+Scoring is simple and binary:
+
+  - Each pick in a user's STARTING SLATE that HITS (the outcome occurs) = 1 point
+  - Each pick that MISSES (the outcome does not occur) = 0 points
+  - Pushes (if applicable, e.g., a game is postponed or a slate pick becomes void) =
+    0 points (not counted for or against)
+
+The user with more points at the end of the week's game slate wins the matchup.
+
+TIEBREAKER: If both users have the same number of correct slate picks, the matchup is
+recorded as a TIE. Tie-breaking for playoff seeding uses head-to-head record,
+then total correct slate picks over the season, then coin flip (randomized server-side
+and logged for auditing).
+
+--- 7.3 Result Determination ---
+
+Once a game concludes, the platform's background job system processes the game
+results:
+
+  1. Fetches final game scores and player stat lines from the data source
+  2. Evaluates each drafted pick's outcome (hit or miss) based on the final stats
+  3. Updates each slate pick's status in the database
+  4. Calculates weekly scores for each team
+  5. Determines the week's matchup winner(s)
+  6. Updates league standings (win/loss records)
+  7. Sends push notifications to users with their results
+
+This processing happens via queued background jobs (see Section 15) to handle
+the load of potentially many leagues and picks resolving simultaneously on
+Sunday nights and Monday nights.
+
+--- 7.4 Standings ---
+
+League standings display:
+  - Rank
+  - Team name
+  - Win / Loss / Tie record
+  - Total correct slate picks (season aggregate — used as tiebreaker)
+  - Points For / Points Against (total weekly pick-hit counts)
+  - Last week's result
+
+
+================================================================================
+8. SEASON STRUCTURE & CHAMPIONSHIP
+================================================================================
+
+--- 8.1 Regular Season ---
+
+The regular season follows the NFL schedule. Commissioners choose how many
+weeks to designate as the regular season (e.g., Weeks 1–13 of the NFL season),
+leaving the remaining weeks for the playoff bracket. The exact week count is
+configurable at league creation.
+
+--- 8.2 Playoff Structure Overview ---
+
+Playoffs are enabled by default and are highly configurable. The playoff system
+mirrors the structure used in established fantasy sports platforms, supporting
+both a winners bracket (for the top teams) and a losers bracket (for the middle
+and bottom teams), so every league member has meaningful games to play through
+the end of the season — not just the top performers.
+
+The commissioner configures the playoff format when creating the league. Once
+the regular season ends, playoff seeding is determined by win/loss record with
+tiebreakers applied (see Section 7.2), and the bracket is automatically
+generated and locked.
+
+--- 8.3 Playoff Bracket Configurations ---
+
+The platform supports the following configurable playoff formats. The
+commissioner selects one when setting up the league:
+
+FORMAT A — TOP 4, WINNERS BRACKET ONLY (2 playoff weeks)
+  For leagues of 8–10 teams.
+  Week 1 (Semifinals): Seed 1 vs Seed 4 | Seed 2 vs Seed 3
+  Week 2 (Championship): Semifinal winners play for 1st place
+  No losers bracket. Seeds 5+ finish the season at their regular season
+  standing with no playoff games.
+
+FORMAT B — TOP 4 WITH CONSOLATION (2 playoff weeks)
+  For leagues of 8–10 teams.
+  Week 1 (Semifinals): Seed 1 vs Seed 4 | Seed 2 vs Seed 3
+  Week 2: Championship game (semifinal winners) + 3rd place game (losers)
+  Determines official 1st, 2nd, and 3rd place finishes.
+  Seeds 5+ finish at regular season standing.
+
+FORMAT C — TOP 6, WINNERS + LOSERS BRACKETS (3 playoff weeks)
+  For leagues of 10–14 teams. The standard full-featured format.
+  Seeds 1 and 2 receive a first-round bye.
+
+  WEEK 1 (Wild Card / First Round):
+    Winners Bracket:  Seed 3 vs Seed 6 | Seed 4 vs Seed 5
+    Losers Bracket:   (no losers bracket games this week — only 4 teams playing)
+
+  WEEK 2 (Semifinals):
+    Winners Bracket Semifinals:
+      Seed 1 vs lowest remaining seed | Seed 2 vs other remaining seed
+    Losers Bracket (Consolation Semifinals):
+      Wild Card losers from Week 1 play each other to stay alive for
+      the 5th/6th place game
+
+  WEEK 3 (Finals):
+    Winners Bracket Championship: determines 1st and 2nd place
+    Winners Bracket 3rd Place Game: semifinal losers play for 3rd place
+    Losers Bracket 5th Place Game: consolation semifinal winners play for 5th
+    6th Place: consolation semifinal loser — last place in playoffs
+
+  Final standings for all 6 playoff teams are officially recorded.
+  Seeds 7+ finish at their regular season standing.
+
+FORMAT D — FULL LEAGUE PLAYOFFS (3 playoff weeks)
+  For leagues of 8–12 teams where the commissioner wants everyone in the
+  postseason. All teams are seeded and placed into either the winners or
+  losers bracket from the start.
+
+  In a 10-team league:
+  Seeds 1–4 enter the Winners Bracket
+  Seeds 5–10 enter the Losers Bracket (or a separate consolation bracket)
+
+  WINNERS BRACKET follows the same structure as Format C for seeds 1–4.
+
+  LOSERS / CONSOLATION BRACKET:
+    Week 1: Seed 5 vs Seed 10 | Seed 6 vs Seed 9 | Seed 7 vs Seed 8
+    Week 2: Winners advance; losers are eliminated (finish at their seed)
+    Week 3: Consolation championship determines 5th place overall
+
+  This format ensures every team plays meaningful games in the final weeks.
+
+--- 8.4 Seeding & Tiebreakers for Playoff Entry ---
+
+At the end of the regular season, teams are seeded by:
+  1. Win/loss record (most wins = highest seed)
+  2. Head-to-head record (if two teams have identical records)
+  3. Total correct slate picks (season aggregate) — points for
+  4. Total opponent correct slate picks (season aggregate) — points against
+  5. Random coin flip (server-side, seeded and logged for auditing)
+
+Tiebreakers are applied in order. Once a tiebreaker separates two teams, the
+remaining tiebreakers are not evaluated for that pairing.
+
+--- 8.5 Playoff Matchup Mechanics ---
+
+Playoff weeks work identically to regular season weeks in terms of gameplay:
+  - The weekly draft occurs on the same scheduled day/time as the regular season
+  - All draft rules, minimum odds thresholds, and slate rules apply unchanged
+  - Head-to-head scoring is identical (most correct starting slate wins)
+  - The same tiebreaker rules apply for individual matchup ties
+
+There are no special rules or power-ups in the playoffs. The same skill set
+that earned a team their playoff seed is what determines the champion.
+
+--- 8.6 Weeks Per Playoff Round ---
+
+Each playoff round is one week (one full NFL game slate). The number of playoff
+weeks consumed by the chosen format is:
+
+  Format A: 2 playoff weeks
+  Format B: 2 playoff weeks
+  Format C: 3 playoff weeks
+  Format D: 3 playoff weeks
+
+The commissioner must ensure the regular season length + playoff weeks does not
+exceed the available NFL weeks in the season. The platform enforces this at
+league creation and warns the commissioner if the configuration would run past
+the NFL regular season calendar.
+
+--- 8.7 Champion Determination & Payout Trigger ---
+
+The winner of the Winners Bracket championship game is the league champion.
+When the final playoff week's results are processed, the platform automatically
+transitions the league to COMPLETED state and triggers the PAYOUT_JOB. Official
+finish positions (1st, 2nd, 3rd, etc.) are recorded permanently on each user's
+career profile.
+
+
+================================================================================
+9. MONEY, PAYOUTS & PLATFORM REVENUE
+================================================================================
+
+--- 9.1 The League Pot ---
+
+When a user joins a league and pays their buy-in, the funds are collected by
+the platform via Stripe and held in trust. The total pot = buy-in amount ×
+number of league members.
+
+Example: 10-team league, $20 buy-in = $200 total pot.
+
+--- 9.2 Platform Commission ---
+
+The platform takes 10% of the total pot. This fee is non-negotiable and applies
+to all leagues.
+
+Example: $200 pot × 10% = $20 platform fee. $180 is distributed to winners.
+
+--- 9.3 Payout Distribution ---
+
+The commissioner configures how the remaining 90% is distributed. Options:
+
+  - 100% to 1st place (winner takes all)
+  - 90% to 1st / 10% to 2nd
+  - 80% to 1st / 15% to 2nd / 5% to 3rd
+  - Custom splits (commissioner inputs percentages that must sum to 100%)
+
+The payout configuration is set at league creation and locked once the season
+begins. The platform enforces that the sum of all payout percentages equals
+exactly 100% of the distributable amount (i.e., 90% of the total pot).
+
+--- 9.4 Payout Processing ---
+
+When the champion is determined (see Section 8.7), the platform automatically initiates payouts
+via Stripe. Winners receive their payout to their registered payout method
+(bank account, debit card) within 3–5 business days, consistent with standard
+Stripe payout timelines.
+
+The platform's 10% commission is retained in the platform's Stripe account.
+
+All payout transactions are logged for financial auditing and tax reporting
+compliance. Users who receive $600 or more in combined payouts in a calendar
+year will be issued a 1099 form per IRS requirements.
+
+--- 9.5 Refunds & Edge Cases ---
+
+  - League cancelled before season start: full refunds to all members
+  - User who leaves before season starts: full refund (commissioner must approve
+    or a configurable grace period applies — e.g., 48 hours before draft)
+  - User who leaves after season starts: no refund (their team remains in the
+    league as a "ghost" team managed entirely by auto-pick for the remainder)
+  - If a season cannot be completed due to an NFL cancellation or force majeure:
+    refunds are prorated based on weeks completed vs. total season weeks, minus
+    the platform's pro-rated commission for weeks played
+
+
+================================================================================
+10. SUBSCRIPTION & MONETIZATION MODEL
+================================================================================
+
+--- 10.1 Free Tier ---
+
+All registered users get:
+  - Full gameplay access (join leagues, draft, manage slates)
+  - Create up to 1 public league AND 1 private league (as commissioner)
+  - Basic personal stats and history
+
+--- 10.2 Commissioner Subscription ($8/month) ---
+
+For users who want to run multiple leagues:
+  - Unlimited public and private league creation
+  - Access to advanced league configuration options
+  - Priority support
+  - Subscription is per user (not per league)
+  - Billed monthly via Stripe, cancellable anytime
+  - If a subscribed commissioner cancels mid-season, their existing active
+    leagues continue until the season ends; new league creation is blocked
+    after cancellation
+
+--- 10.3 Platform Commission (See Section 9) ---
+
+The 10% pot commission is the primary revenue source for the platform beyond
+subscriptions.
+
+--- 10.4 Future Monetization (Out of Scope for MVP — See Section 19) ---
+
+  - Brand-sponsored prediction challenges
+  - Premium analytics / pick accuracy insights
+  - League branding / custom themes
+
+
+================================================================================
+11. ODDS INTEGRATION (THE-ODDS-API.COM)
+================================================================================
+
+--- 11.1 Why the-odds-api.com ---
+
+The-odds-api.com is a cost-effective, developer-friendly odds data provider
+that offers American odds across major sports including NFL. It is well-suited
+for this application because:
+
+  - Our use case does NOT require tick-by-tick real-time odds (unlike a live
+    sportsbook). We need odds at two specific moments:
+      1. Draft pool creation (24–48 hours before draft)
+      2. Ongoing slate management display (updated every few hours)
+  - The API has a clear, documented rate limit structure with quota-based
+    billing, making costs predictable and manageable
+  - It supports player props (which are the core of our slate picks)
+    as well as game lines (spread, moneyline, totals)
+
+--- 11.2 Data We Pull ---
+
+From the-odds-api.com, we retrieve:
+  - NFL game schedules (teams, dates, times)
+  - Player prop markets (receiving yards, receptions, passing yards, etc.)
+  - Game outcome markets (moneyline, spread, totals)
+  - Odds in American format from multiple bookmakers (we use a consensus or
+    single primary bookmaker — configurable)
+
+--- 11.3 When We Pull Data ---
+
+DRAFT POOL CREATION (weekly, mid-week):
+  - A scheduled background job fires mid-week (e.g., Wednesday morning)
+  - Pulls all available NFL player props and game lines for the upcoming Sunday
+    and Monday games
+  - Filters picks by eligibility (odds at or above the minimum threshold)
+  - Stores a snapshot of odds in our database — these are the "draft odds" and
+    do not change for draft eligibility purposes
+
+SLATE MANAGEMENT DISPLAY (ongoing, lower frequency):
+  - A background job pulls updated odds periodically (e.g., every 2–3 hours
+    during the week, more frequently on game day)
+  - Updates the stored "current odds" field on each slate pick record
+  - Rate limiting and quota management are carefully handled here (see Section 17)
+
+RESULT FETCHING (post-game):
+  - After games conclude, a job fetches final scores and stats to grade picks
+  - This may use a separate data source for confirmed final stats (the-odds-api
+    may not be the best source for final stat grading — a secondary sports data
+    API may be used for result grading only, e.g., a free-tier stats API)
+
+--- 11.4 Odds Display Philosophy ---
+
+Odds shown to users during slate management are the best available current
+odds as of the last API refresh. The platform clearly communicates the last-
+updated timestamp to users so they understand they are not seeing live tick-
+by-tick data. A "refresh" button allows users to manually trigger a re-fetch
+(subject to per-user rate limiting to prevent abuse).
+
+
+================================================================================
+12. NOTIFICATIONS & REAL-TIME CONSIDERATIONS
+================================================================================
+
+--- 12.1 Push Notifications ---
+
+The platform sends push notifications (mobile) and email notifications for:
+
+  - Draft starting soon (24 hours, 1 hour, 15 minutes before)
+  - It's your turn to pick (during the draft)
+  - Auto-pick was made on your behalf (if you timed out)
+  - Pick locked (game about to start, your slate is now final)
+  - Weekly results posted (your matchup outcome)
+  - Season standings updated
+  - League invite received
+  - Payout processed
+
+--- 12.2 Real-Time Draft Experience ---
+
+The draft screen requires near-real-time updates (other users' picks appearing
+instantly, countdown timers, your turn indicator). This is achieved via:
+
+  - WebSocket or Server-Sent Events (SSE) connection maintained during the draft
+  - Laravel Broadcasting with a queue-backed event system
+  - A dedicated broadcast channel per league draft session
+  - Mobile clients reconnect gracefully if the connection drops
+
+--- 12.3 Slate Management (Non-Real-Time) ---
+
+Outside of draft windows, slate management does not require WebSockets. Standard
+HTTP polling or manual page refresh is acceptable, with odds refresh triggered
+explicitly by the user or by a periodic client-side poll (e.g., every 5 minutes
+on the slate management page).
+
+
+================================================================================
+13. MOBILE & TABLET UX PHILOSOPHY
+================================================================================
+
+The platform is designed mobile-first. The primary use case is a user managing
+their slate from their phone while watching Sunday afternoon games.
+
+Key UX principles:
+
+  THUMB-FRIENDLY INTERACTIONS: All primary actions (swap pick to starter, swap
+  to bench, confirm slate) are reachable in the lower half of the screen on
+  mobile. No critical actions are buried in header menus.
+
+  DRAFT SCREEN ON MOBILE: The draft is the most complex screen. On mobile, it
+  uses a bottom-sheet pattern for the slate pick detail/confirmation, with the
+  available slate picks list as the primary scrollable content. The countdown timer
+  is always visible (sticky header or floating element).
+
+  FAST LOAD: The app is a Vue 3 SPA. Route-based code splitting ensures the
+  draft screen and slate management screen load quickly even on slower mobile
+  connections. Critical data is pre-fetched on route entry.
+
+  OFFLINE GRACEFUL DEGRADATION: If a user loses connectivity during the draft,
+  the app shows a clear "reconnecting" state and does not allow picks to be
+  submitted until the connection is confirmed restored.
+
+  TABLET LAYOUT: On tablet-sized screens, the draft and slate management screens use a
+  split-panel layout: picks list on the left, current roster on the right.
+  This mirrors the desktop multi-column experience.
+
+  DARK MODE: The app supports system-level dark/light mode switching. All
+  color tokens are designed to work in both modes.
+
+
+================================================================================
+14. FRONTEND VIEWS & CORE USER FLOWS
+================================================================================
+
+--- 14.1 Authentication & Account Creation ---
+
+MARKETING HOMEPAGE (unauthenticated, public):
+  The public-facing landing page is a standalone marketing view separate from
+  the authenticated app shell. It communicates the product concept, highlights
+  key features, and presents two clear CTAs: "Log In" and "Create Account."
+  It is intentionally lightweight — no app chrome, no bottom navigation, no
+  authenticated state. SEO-optimized static-style content served by the Vue
+  SPA with appropriate meta tags.
+
+ACCOUNT CREATION:
+  Registration is intentionally frictionless. The sign-up flow collects only
+  the minimum required fields — display name, email, and password — and
+  immediately logs the user in upon successful submission. No email
+  verification is required at the point of registration. Email is collected
+  for notification and account recovery purposes but is not a gate to using
+  the platform.
+
+  Social login is supported from day one via Laravel Socialite:
+    - Login via Google (MVP)
+    - Login via Apple (post-MVP, stubbed in architecture from day one)
+
+  Laravel Socialite is the package used to handle OAuth flows for both
+  providers. On first social login, an account is automatically created using
+  the profile data returned by the provider (name, email, avatar where
+  available). On subsequent logins, the existing account is matched by email.
+  Social login users are not required to set a password.
+
+  After any successful login or registration (email or social), the user is
+  redirected directly to their dashboard.
+
+LOGIN:
+  Standard email + password form with a "Forgot password" flow. Google login
+  button presented as an alternative on the same screen. Clean, minimal layout
+  — no distractions. Vuelidate handles client-side field validation with inline
+  error messaging.
+
+--- 14.2 App Shell & Global Navigation ---
+
+Once authenticated, all views are rendered within a persistent app shell that
+provides:
+
+FIXED BOTTOM NAVIGATION BAR:
+  A minimal tab bar fixed to the bottom of the screen at all times within the
+  authenticated app. Contains exactly three navigation items, icon-only with
+  small labels:
+    - Dashboard  (home icon)
+    - Leagues    (trophy or grid icon)
+    - Feed       (activity/feed icon)
+
+  The active tab is indicated by a filled/highlighted icon state. The bottom
+  nav is the sole primary navigation — there is no hamburger menu or top
+  navigation bar in the authenticated app. On tablet, the bottom nav may
+  optionally expand to a left-side rail navigation using the same three items.
+
+TOP BAR:
+  A minimal top bar displays the current view title on the left and a user
+  avatar/profile icon on the right. Tapping the avatar opens a slide-out or
+  dropdown with: Profile, Settings, and Log Out. No other items.
+
+--- 14.3 Dashboard View ---
+
+The dashboard is the first screen a logged-in user sees. It is a summary and
+launchpad — not a detailed management screen. Key elements:
+
+  MY LEAGUES SUMMARY: A horizontally scrollable row of league cards, one per
+  active league the user belongs to. Each card shows: league name, current
+  week, the user's win/loss record, and a status badge (e.g., "Draft Tonight",
+  "Manage Lineup", "Picks Locked", "Results In"). Tapping a card navigates
+  directly to that league's League View.
+
+  CURRENT WEEK ALERT BANNER: If a draft is scheduled within 24 hours for any
+  of the user's leagues, a prominent banner appears at the top of the dashboard
+  with the league name, draft time, and a "Go to Draft" CTA.
+
+  ACTION CTAs: Below the league row, two cards or buttons:
+    - "Join a League" — navigates to the public league browser
+    - "Create a League" — opens the league creation flow
+
+  RECENT ACTIVITY FEED PREVIEW: A short preview of the most recent 3–4 items
+  from the user's feed (see Section 14.6), with a "See all" link to the full
+  Feed view.
+
+  USER QUICK STATS: A compact stat strip showing the user's career pick hit
+  rate, overall record, and championship count. Tapping navigates to the full
+  career profile.
+
+--- 14.4 Leagues View ---
+
+The Leagues view (second tab) shows all leagues the user is currently a member
+of, plus past leagues. Layout:
+
+  ACTIVE LEAGUES: A vertical list of league cards for all currently active
+  leagues. Each card shows: league name, user's team name, current week,
+  win/loss record, this week's matchup opponent (if applicable), and a status
+  badge. Tapping navigates to the League View for that league.
+
+  COMPLETED LEAGUES: A collapsible section below the active list showing
+  archived past leagues with final standings and the user's finish position.
+
+  BROWSE / JOIN: A sticky button or section at the bottom (above the nav bar)
+  to browse public leagues or create a new one.
+
+--- 14.5 League View ---
+
+The League View is the core gameplay screen. It is scoped to a single league
+and contains everything a user needs to manage their weekly slate and track
+standings. The screen is organized around a sub-navigation tab element with
+three slides:
+
+  TAB 1 — MY PICKS (default/active tab on entry)
+  TAB 2 — MATCHUP
+  TAB 3 — STANDINGS
+
+SUB-NAVIGATION:
+  A horizontally sliding tab strip below the top bar (but above the content
+  area) with the three tab labels. The active tab has an underline or filled
+  indicator. Swiping left/right on the content area transitions between tabs
+  with a slide animation. The tab strip remains fixed while content scrolls.
+
+The League View top bar includes the league name and a settings/info icon
+(for commissioners, this opens league management options).
+
+--- TAB 1: MY PICKS ---
+
+The primary slate management screen. Displays the user's full slate for the
+current week, divided into starting slots and bench slots.
+
+STARTING SLOTS:
+  Displayed as a vertical stack of cards, one per starting slot. Each card
+  shows:
+    - Slot number or label (in Per-Slot Bands mode, the odds band label, e.g.,
+      "High Risk Slot" or "+100 or better")
+    - Pick description (truncated if necessary)
+    - Player name / team / game
+    - Game time and lock countdown (e.g., "Locks in 4h 22m" or "LOCKED")
+    - Current odds (with a subtle indicator if odds have moved since draft —
+      e.g., a green arrow if odds shortened, red if they lengthened)
+    - Outcome badge once the game concludes (HIT in green, MISS in red,
+      PENDING in neutral)
+
+BENCH SLOTS:
+  Displayed below the starting slots in a visually distinct but consistent
+  card style (slightly muted or differently styled to indicate bench status).
+  Same fields as starting slots.
+
+PICK DETAIL MODAL:
+  Tapping any slate card (starter or bench) opens a bottom-sheet modal with
+  full pick details and management options. Modal contents:
+
+    - Full pick description
+    - Game details (teams, date, time, venue)
+    - Drafted odds vs. current odds (with delta highlighted)
+    - Odds drift indicator (drafted at X, currently at Y)
+    - Relevant news blurb: a short text snippet relevant to the slate pick —
+      sourced from a news/injury API or news feed integration. For example,
+      if the slate pick is "Rashee Rice 7+ receptions," and Rice is listed as
+      questionable, a news item surfaces here ("Rice listed questionable
+      Friday with hamstring — limited practice"). This is a best-effort
+      data enrichment feature; if no relevant news is available, this
+      section is hidden.
+    - Current status of the slate pick: starter slot N / bench slot N / locked
+    - Action buttons:
+        If pick is unlocked and user has a bench pick to swap:
+          "Move to Bench" (if currently a starter)
+          "Move to Starter" (if currently on bench — shows which slot it
+          would fill, or prompts user to choose a slot if multiple are open)
+        If pick is locked: no action buttons, locked state displayed clearly
+
+EMPTY SLOT STATE:
+  If a starting or bench slot has no pick assigned (edge case — e.g., the
+  user's auto-pick failed to fill all slots), the slot card displays an
+  "Empty" state with a muted placeholder. No action is available for empty
+  slots outside of the draft.
+
+LINEUP STATUS SUMMARY:
+  A brief status line at the top of the My Picks tab indicates the overall
+  slate state for the week, e.g.:
+    "3 of 5 starters locked · 2 unlocked slate picks remaining"
+    "All picks locked · Awaiting results"
+    "Draft tonight at 8:00 PM · No picks yet"
+
+--- TAB 2: MATCHUP ---
+
+The head-to-head view for the current week's matchup. Shows the user's
+starting slate side by side (or stacked on narrow mobile) against their
+opponent's starting slate.
+
+LAYOUT:
+  User's team name and record on the left / top.
+  Opponent's team name and record on the right / bottom.
+  Current score prominently displayed in the center (e.g., "2 — 1") updating
+  as game results come in throughout the week.
+
+PICK-BY-PICK COMPARISON:
+  Each starting slot is shown as a paired row or card:
+    - User's pick for that slot (description, current odds, outcome badge)
+    - Opponent's pick for that slot (same fields)
+  Slots are matched positionally (slot 1 vs slot 1, etc.) or simply listed
+  in parallel columns. Outcome badges (HIT / MISS / PENDING) update
+  dynamically as games conclude.
+
+  In Per-Slot Bands mode, slots are labeled with their band name, making the
+  matchup comparison especially meaningful — users can see head-to-head which
+  player made the better call in each odds tier.
+
+ODDS BREAKDOWN:
+  Below the slate pick comparison, a summary strip shows the aggregate implied
+  probability of each team's starting slate based on current odds — a quick
+  read of which team's picks are collectively more favored by the market going
+  into the week.
+
+MATCHUP RESULT STATE:
+  When the week concludes and all picks are graded, the matchup view updates
+  to show the final result with a clear WIN / LOSS / TIE banner, final score,
+  and a breakdown of which picks hit and missed for both teams.
+
+--- TAB 3: STANDINGS ---
+
+The full league standings and historical results view.
+
+CURRENT STANDINGS LIST:
+  A ranked list of all teams in the league. Each row shows:
+    - Rank
+    - Team logo and team name
+    - Owner's display name
+    - Win / Loss / Tie record
+    - Correct picks total (season)
+    - Last week result (W / L / T badge)
+
+  Tapping any team row (including the user's own) opens a TEAM DETAIL POPUP:
+    - Team name, logo, owner avatar and display name
+    - Season record and rank
+    - This week's matchup context (who they're playing, current score if
+      in progress)
+    - Owner's quick career stats strip (hit rate, championships, overall record)
+    - Recent weekly results (last 4–5 weeks shown as W/L badges)
+
+WEEK SELECTOR / HISTORY:
+  A dropdown or segmented control at the top of the standings tab allows the
+  user to select any prior week of the current season (or prior seasons for
+  completed leagues). Selecting a week updates the standings list to show
+  that week's snapshot standings, and replaces the "last week result" column
+  with that specific week's result. This gives users a full historical view
+  of how the standings evolved across the season.
+
+  For completed leagues (accessed via the archived leagues list), the week
+  selector defaults to the final week (championship), and the full season
+  arc is browsable.
+
+PLAYOFF BRACKET VIEW:
+  Once the regular season ends and playoffs begin, the Standings tab transforms
+  into a Bracket View — a visual representation of the playoff bracket showing
+  matchups, results to date, and remaining games. The week selector remains
+  available to browse regular season standings. A toggle or tab within this
+  view switches between "Bracket" and "Regular Season Standings."
+
+--- 14.6 Feed View ---
+
+The Feed view (third tab) is a platform-wide and league-scoped activity stream.
+It surfaces relevant events to keep users engaged between draft and game days.
+
+FEED ITEMS (examples):
+  - "[User] won their matchup vs. [Opponent] 4–2 this week in [League]"
+  - "[User]'s pick 'Ja'Marr Chase 6+ receptions' hit! (+110 odds)"
+  - "Draft tonight at 8:00 PM in [League] — [N] members ready"
+  - "[User] joined [League]"
+  - "Results are in for Week 7 in [League] — check your matchup"
+  - "[User] is on a 5-pick correct streak in [League]"
+
+Feed items are scoped to leagues the user belongs to. A filter toggle at the
+top of the feed allows switching between "All Leagues" and a specific league.
+Feed is paginated with infinite scroll.
+
+--- 14.7 Result Notifications & Dynamic Pick Outcome Updates ---
+
+When a game concludes and the RESULT_GRADING_JOB processes outcomes:
+
+  PUSH NOTIFICATION: A notification is sent summarizing the user's picks that
+  resolved in that game window (e.g., "Your Sunday 1pm picks are in — 2 hits,
+  1 miss. You lead your matchup 3–2.").
+
+  IN-APP TOAST / POPUP: If the user has the app open when results are processed
+  (detected via WebSocket connection), a toast notification appears with the
+  same summary. Tapping it navigates to the relevant Matchup tab.
+
+  PICK CARD ANIMATION: On the My Picks and Matchup tabs, slate cards that
+  resolve animate to their outcome state — a green HIT flash or red MISS flash
+  before settling into the final badge state. This makes results feel live and
+  satisfying rather than static.
+
+  MATCHUP RESULT POPUP: When the final game of the week concludes and a
+  matchup winner is determined, a full-screen or prominent modal popup is
+  shown (if the user is in the app) with the final result — WIN, LOSS, or
+  TIE — along with the final score and a brief summary. The popup includes
+  a share button for social sharing of the result.
+
+--- 14.8 League Creation & Settings Flow ---
+
+Accessed from the Dashboard CTA or Leagues view. A multi-step form flow:
+
+  STEP 1: League basics — name, public or private, max teams
+  STEP 2: Buy-in and payout structure
+  STEP 3: Roster and odds settings — slate size, odds enforcement mode
+          (Global Floor or Per-Slot Bands), threshold/band values
+  STEP 4: Draft settings — draft day, draft time, pick timer duration
+  STEP 5: Season and playoff settings — season length, playoff format
+  STEP 6: Review and confirm — summary of all settings with edit links
+          back to each step; "Create League" button
+
+  After creation, the commissioner is shown their league's invite code (for
+  private leagues) and a shareable invite link. Public leagues are immediately
+  listed in the league browser.
+
+  Vuelidate handles all step-level validation. Each step shows inline errors
+  before allowing progression. The review step re-validates the full form
+  before submission.
+
+--- 14.9 Profile View ---
+
+Accessible via the avatar icon in the top bar. Shows the user's full career
+profile as described in Section 18. Sections:
+
+  - Avatar, display name, edit profile button
+  - Career badges (championships, 2nd, 3rd place finishes)
+  - Stats grid: record, hit rate, average odds drift, longest streak
+  - Active leagues list (with links)
+  - Historical league archive (completed seasons, finish positions)
+  - Account settings: notification preferences, linked accounts (Google),
+    payout method management, password change (if not social-only account)
+
+
+================================================================================
+15. TECH STACK OVERVIEW
+================================================================================
+
+--- Frontend ---
+
+  Framework:   Vue 3 (Composition API, <script setup>)
+  Language:    JavaScript (no TypeScript in MVP)
+  State:       Pinia (global state management)
+  Routing:     Vue Router (with route guards for auth)
+  Validation:  Vuelidate (form validation)
+  Build:       Vite (fast dev server, optimized production build)
+  CSS:         Tailwind CSS (utility-first, mobile-first responsive design)
+  HTTP:        Axios (API calls to Laravel backend)
+  Real-Time:   Laravel Echo + Pusher (or Soketi self-hosted) for WebSocket
+               connections during draft sessions
+
+--- Backend ---
+
+  Framework:   Laravel (PHP)
+  Language:    PHP 8.2+
+  Database:    MySQL 8.0+
+  ORM:         Eloquent
+  Auth:        Laravel Sanctum (SPA authentication with token-based API auth)
+  Jobs:        Laravel Queue (Redis driver from day one — see Horizon note below)
+  Horizon:     Laravel Horizon (job monitoring, queue visibility, metrics,
+               and failed job management — Redis required; runs in supervisor-
+               managed process alongside queue workers)
+  Scheduler:   Laravel Task Scheduler (cron-based job dispatch)
+  Broadcasting: Laravel Broadcasting (Pusher or Soketi channel driver)
+  Payments:    Stripe PHP SDK + Laravel Cashier (for subscriptions)
+  Notifications: Laravel Notifications (mail + push via FCM/APNs)
+
+--- Infrastructure (MVP / Launch) ---
+
+  Hosting:     Single VPS or managed app platform (e.g., Forge + Linode/DO)
+  Database:    Managed MySQL instance
+  Queue:       Database queue driver (MVP), with architecture ready for Redis
+  Storage:     S3-compatible object storage (team logos, user avatars)
+  CDN:         CloudFront or similar for static assets
+  Email:       Mailgun or Postmark via Laravel Mail
+
+--- Infrastructure (Future / Scale) ---
+
+  The job queue architecture is explicitly designed to migrate to Redis queues
+  and eventually a Kubernetes-based deployment with horizontal worker scaling.
+  See Section 15 for details.
+
+
+================================================================================
+16. BACKEND ARCHITECTURE & JOB QUEUE PHILOSOPHY
+================================================================================
+
+--- 16.1 Core Philosophy ---
+
+All heavy, slow, or batch-processing operations are handled as background jobs
+dispatched to Laravel's queue system. This keeps HTTP request/response cycles
+fast and ensures the app remains responsive under load.
+
+The queue driver starts as the database driver (Laravel's built-in, using MySQL)
+for simplicity in MVP. The job structure is built so that migrating to Redis
+(and later Kubernetes-based workers) requires only configuration changes, not
+architectural rewrites.
+
+--- 16.2 Identified Background Jobs ---
+
+SLATE_POOL_BUILD_JOB
+  Trigger: Laravel Scheduler, fires automatically 15–30 minutes before each
+           league's scheduled weekly draft start time. Since different leagues
+           may have different draft days/times (commissioner-configurable),
+           this job is dispatched per-league based on each league's stored
+           draft schedule, not on a single global cron. A global scheduler
+           check runs every 5 minutes and dispatches SLATE_POOL_BUILD_JOB
+           for any league whose draft starts within the next 30 minutes and
+           whose pool has not yet been built for the current week.
+  Purpose: Fetch the latest NFL odds from the-odds-api.com at the freshest
+           possible moment before the draft begins; filter eligible picks
+           (above minimum odds threshold, games far enough from kickoff);
+           create the slate pool records for the league's upcoming draft.
+  Notes:   Rate-limit aware; a single API fetch is made and reused across all
+           leagues drafting within the same window (within a configurable
+           deduplication interval, e.g., leagues drafting within 30 minutes
+           of each other on the same day share one API fetch). The draft
+           lobby is held in "preparing" state until this job completes.
+
+ODDS_REFRESH_JOB
+  Trigger: Laravel Scheduler, every 2–3 hours during active weeks
+  Purpose: Update "current odds" on all active picks for slate management
+           display purposes
+  Notes:   Batched API calls; respects quota limits; throttled per Section 16
+
+DRAFT_AUTOPICK_JOB
+  Trigger: Draft timer expiry event (dispatched by the draft WebSocket handler)
+  Purpose: When a user's pick timer expires, auto-select the highest-odds
+           eligible remaining pick in the pool on their behalf
+  Notes:   Must process within seconds; high priority queue
+
+DRAFT_ADVANCE_JOB
+  Trigger: After each slate pick is confirmed (manual or auto)
+  Purpose: Advance the draft to the next user in the snake order, start their
+           countdown timer, broadcast the state change to all connected clients
+
+SLATE_LOCK_JOB
+  Trigger: Laravel Scheduler, checked every 5 minutes; also triggered by
+           game start time events
+  Purpose: Mark all picks for a game as "locked" once kickoff time passes;
+           prevents any further slate swaps for those picks
+
+RESULT_GRADING_JOB
+  Trigger: Laravel Scheduler, post-game windows (e.g., Monday 12:00 AM,
+           Tuesday 6:00 AM for cleanup)
+  Purpose: Fetch final game stats, grade each slate pick (hit/miss/void), update
+           pick outcome records
+
+MATCHUP_SCORE_JOB
+  Trigger: Dispatched by RESULT_GRADING_JOB upon completion of grading for
+           a given week's full game slate
+  Purpose: Calculate each team's weekly score (count of correct starting slate),
+           determine matchup winners, update win/loss records
+
+STANDINGS_UPDATE_JOB
+  Trigger: Dispatched by MATCHUP_SCORE_JOB
+  Purpose: Recalculate and update league standings, handle tiebreakers
+
+PAYOUT_JOB
+  Trigger: Manually triggered by platform admin or auto-triggered when season
+           state transitions to COMPLETED
+  Purpose: Calculate final payouts per the league's configured structure,
+           initiate Stripe transfers to winners, record all transactions
+
+NOTIFICATION_DISPATCH_JOB
+  Trigger: Various (draft start, pick result, payout, etc.)
+  Purpose: Send push notifications and emails to relevant users
+  Notes:   Dispatched from other jobs; separated to prevent notification
+           failures from blocking core game logic
+
+REFUND_JOB
+  Trigger: League cancellation event
+  Purpose: Issue Stripe refunds to all buy-in payers for a cancelled league
+
+--- 16.3 Queue Priority Levels ---
+
+High priority queue:   DRAFT_AUTOPICK_JOB, DRAFT_ADVANCE_JOB
+                       (time-sensitive; must process within seconds)
+
+Default priority queue: RESULT_GRADING_JOB, MATCHUP_SCORE_JOB,
+                        STANDINGS_UPDATE_JOB, SLATE_LOCK_JOB
+
+Low priority queue:    ODDS_REFRESH_JOB, SLATE_POOL_BUILD_JOB,
+                       NOTIFICATION_DISPATCH_JOB, PAYOUT_JOB, REFUND_JOB
+
+In the MVP (database driver), these are represented as separate named queues.
+In a Kubernetes deployment, each queue maps to its own worker deployment with
+independently scalable replica counts.
+
+--- 16.4 Job Retry & Failure Handling ---
+
+All jobs define:
+  - Maximum retry attempts (e.g., 3 retries with exponential backoff)
+  - A failed job handler that logs the failure and notifies the admin
+  - Idempotency keys where applicable (e.g., PAYOUT_JOB checks if a payout
+    record already exists before initiating a Stripe transfer)
+
+A dead-letter queue (failed_jobs table in Laravel) captures all permanently
+failed jobs for admin review.
+
+--- 16.6 Laravel Horizon ---
+
+Laravel Horizon provides the real-time dashboard and management interface for
+all queue activity on the platform. It is the primary tool for monitoring job
+health, diagnosing failures, and tuning worker throughput.
+
+Horizon is configured via config/horizon.php and runs as a long-lived process
+managed by Supervisor (or the equivalent in the deployment environment). It
+requires Redis as the queue driver — this is one of the key reasons the
+architecture migrates from the database queue driver (MVP) to Redis (production)
+as a prerequisite for Horizon being fully operational.
+
+WHAT HORIZON PROVIDES:
+
+  Real-time dashboard: Live view of jobs processing, queued, completed, and
+  failed across all named queues (high, default, low priority). Throughput
+  and wait time metrics are visible per queue.
+
+  Job history and search: Full searchable history of completed and failed jobs,
+  including payload inspection. Essential for debugging result grading jobs,
+  payout jobs, and slate pool build jobs where the input data matters.
+
+  Failed job management: Failed jobs are surfaced in the Horizon UI with their
+  exception details and full payload. Admins can retry individual failed jobs
+  or bulk-retry by queue directly from the dashboard without needing artisan
+  commands.
+
+  Queue metrics and throughput graphs: Historical throughput per queue over
+  time, allowing the team to identify bottlenecks (e.g., Sunday night spikes
+  when RESULT_GRADING_JOB and MATCHUP_SCORE_JOB fire across many leagues
+  simultaneously).
+
+  Worker auto-balancing: Horizon's balancing strategies (simple, auto) can
+  be configured to dynamically redistribute worker processes across queues
+  based on queue depth — ensuring the high-priority draft queue always has
+  available workers during peak draft windows.
+
+HORIZON ACCESS:
+  The Horizon dashboard (/horizon) is restricted to platform admin users via
+  Laravel's Horizon gate, defined in the HorizonServiceProvider. It is never
+  accessible to regular league users or commissioners.
+
+HORIZON IN MVP vs. PRODUCTION:
+  Horizon is included in the MVP. Redis is required for Horizon to be fully
+  operational and is straightforward to run locally at no cost:
+
+    macOS:   brew install redis && brew services start redis
+    Linux:   apt install redis-server
+    Windows: WSL2 (then apt install redis-server), or Laragon (bundles Redis
+             out of the box), or Laravel Herd Pro (one-click Redis toggle)
+
+  In all cases, set REDIS_HOST=127.0.0.1 in the local .env file. No Docker
+  or additional infrastructure is needed for local development. Redis runs
+  as a lightweight background service on the default port 6379.
+
+  The queue driver should be set to Redis (QUEUE_CONNECTION=redis) from the
+  start of development — there is no reason to begin with the database driver
+  given how simple the local Redis setup is. This keeps the local environment
+  consistent with production and means Horizon's dashboard is fully functional
+  from day one of development.
+
+--- 16.7 Kubernetes Migration Path ---
+
+When the platform scales to warrant Kubernetes:
+  - Switch queue driver from database to Redis (change in .env only)
+  - Deploy Redis as a managed service or in-cluster
+  - Each named queue becomes a Kubernetes Deployment with its own worker pods
+  - High-priority queues get more replicas and guaranteed resource allocation
+  - Horizontal Pod Autoscaler scales worker pods based on queue depth
+  - No application code changes required — only infrastructure configuration
+
+This migration path is the explicit reason for building with named queues and
+strict job separation from day one.
+
+
+================================================================================
+17. API RATE LIMITING & THROTTLING STRATEGY
+================================================================================
+
+--- 17.1 the-odds-api.com Quota Management ---
+
+The-odds-api.com uses a request quota model (not rate-per-second). Each API
+call consumes a certain number of quota units depending on the endpoint and
+number of markets requested.
+
+Our strategy to minimize quota consumption:
+
+  a) FETCH ONCE, FAN OUT: When building the slate pool, we make a single set of
+     API calls to fetch all available NFL props for the week. The results are
+     stored in our database. All leagues use this single cached dataset — we
+     do not make one API call per league.
+
+  b) SCHEDULED REFRESHES ONLY: We never make on-demand API calls in response to
+     individual user requests (except the user-triggered "refresh odds" button,
+     which has its own per-user rate limit). All data fetching happens via
+     scheduled background jobs.
+
+  c) SELECTIVE MARKET FETCHING: We only request the specific prop markets we
+     support (e.g., player receptions, passing yards, rushing yards, game
+     moneyline). We do not pull all available markets — this reduces quota usage
+     per call.
+
+  d) CONFIGURABLE REFRESH FREQUENCY: The odds refresh interval is stored as a
+     platform configuration value (not hardcoded). When upgrading to a higher
+     API plan with more quota, the admin can increase the refresh frequency via
+     a config change without a code deployment.
+
+--- 17.2 Platform-Level API Rate Limiting ---
+
+In addition to managing our outbound API usage, we rate limit inbound requests
+to our own API to prevent abuse:
+
+  - User-triggered "refresh odds" button: max 1 request per user per 10 minutes
+  - Draft pick submission: no special rate limit (time-constrained by design)
+  - Lineup swap: max 20 swaps per user per hour (prevents scripted manipulation)
+  - General API: Laravel's built-in throttle middleware (60 requests/minute
+    per authenticated user for most endpoints)
+
+--- 17.3 Configurable Limits ---
+
+All rate limit values are stored in the Laravel config system (not hardcoded).
+This means they can be adjusted via environment variables or a platform admin
+setting without code changes:
+
+  - ODDS_API_REFRESH_INTERVAL_HOURS (default: 3)
+  - ODDS_API_SLATE_POOL_BUILD_DAY (default: Wednesday)
+  - USER_ODDS_REFRESH_COOLDOWN_MINUTES (default: 10)
+  - USER_LINEUP_SWAP_LIMIT_PER_HOUR (default: 20)
+  - API_GENERAL_THROTTLE_PER_MINUTE (default: 60)
+
+
+================================================================================
+18. DATA MODELS (CONCEPTUAL, PLAIN ENGLISH)
+================================================================================
+
+This section describes the major entities in plain English. Full schema design
+with migrations will be produced in the technical .md document.
+
+USERS
+  Core identity: id, email, password hash, display name, avatar, timestamps.
+  Linked to: subscriptions, team memberships, payout methods.
+
+LEAGUES
+  Represents a single competition. Fields include: name, type (public/private),
+  state (pending/active/playoffs/completed/cancelled), commissioner (user_id),
+  all configuration settings (buy-in, payout structure, slate size, min odds,
+  draft settings, season length), current week, invite code (for private
+  leagues), total pot amount collected.
+
+LEAGUE_MEMBERSHIPS
+  Junction table between users and leagues. Includes: team name, team logo,
+  current record (wins/losses/ties), season stats. One record per user per
+  league.
+
+SEASONS
+  Tracks the active season for a league. Includes week number tracking,
+  start/end dates, playoff structure.
+
+WEEKLY_MATCHUPS
+  One record per pair of teams matched in a given week. Includes: week number,
+  home/away team (arbitrary labeling), scores, and winner.
+
+SLATE_POOLS
+  One pool per league per week. Contains the set of available slate picks for that
+  week's draft. Includes metadata about when it was built and the snapshot
+  odds used.
+
+PICK_SELECTIONS (the core entity — the "players" of this game)
+  Represents one available pick in a slate pool. Fields include: description,
+  game reference, game time (kickoff), pick type (player prop, game line),
+  sport, snapshot odds (at pool creation), current odds (updated periodically),
+  outcome (pending / hit / miss / void).
+
+SLATE_PICKS
+  Represents a slate pick that has been drafted by a specific team. Junction of
+  league_membership + pick_selection + week. Includes: slot assignment
+  (starter slot 1–5 or bench slot 1–3), lock status, slate swap history
+  (for auditing), drafted_odds (the snapshot odds at the moment this pick
+  was selected during the draft), and locked_odds (the odds at the moment
+  this pick's game kicked off and the slate pick permanently locked into its
+  current starter or bench position). The delta between drafted_odds and
+  locked_odds is the "odds drift" for that pick — a positive drift means
+  the slate pick became a bigger favorite after the draft (the user captured
+  value by selecting it early), a negative drift means it became a longer
+  shot (the market moved against the slate pick's implied probability after the
+  draft). Odds drift is stored on every slate pick record regardless of whether
+  it started or sat on the bench, enabling full historical analysis at the
+  pick, week, user, and league level.
+
+TRANSACTIONS
+  Financial records for all buy-ins, payouts, and platform commissions. Includes:
+  user_id, league_id, amount, type (buy_in / payout / commission / refund),
+  stripe_reference, status, timestamps.
+
+NOTIFICATIONS
+  Log of all notifications sent (user, type, content, delivered_at).
+
+PLATFORM_SETTINGS
+  Key-value store for configurable platform parameters (API limits, feature
+  flags, default league settings).
+
+JOB_LOG (optional but recommended)
+  Log of background job executions for auditing: job type, league/week context,
+  started_at, completed_at, status, notes. Useful for debugging slate pool builds
+  and result grading.
+
+
+================================================================================
+19. USER CAREER STATS & PROFILE ANALYTICS
+================================================================================
+
+Every user accumulates a persistent career profile that spans all leagues and
+all seasons they have ever participated in. This profile is visible on their
+public user page and serves as both a bragging-rights display and a meaningful
+measure of long-term skill. All stats below are tracked globally (across all
+leagues) as well as per-league and per-season where relevant.
+
+--- 18.1 Record & Finish History ---
+
+  Overall win/loss/tie record (all matchups, all leagues, all seasons)
+  Number of league championships (1st place finishes)
+  Number of 2nd place finishes
+  Number of 3rd place finishes
+  Number of seasons participated in
+  Number of unique leagues played in
+  Total playoff appearances
+
+--- 18.2 Pick Accuracy Stats ---
+
+  Overall pick hit rate: correct slate picks / total starting slate (all time)
+  Weekly high score: personal best correct slate picks in a single week
+  Longest matchup win streak (consecutive weekly head-to-head wins)
+  Longest correct pick streak (consecutive individual picks that hit)
+  Hit rate by pick type (player prop vs. game line)
+  Hit rate by pick category (receiving, rushing, passing, game outcome, etc.)
+  Hit rate by NFL team (e.g., the user tends to nail Chiefs props)
+  Hit rate by game window (Sunday 1pm, Sunday late, Monday Night, etc.)
+
+--- 18.3 Odds Drift Stats (Signature Platform Metric) ---
+
+Odds drift is the platform's signature skill metric and is unique to this
+product. It measures the difference between the odds of a slate pick at the moment
+a user selected it in the draft versus the odds at the moment that pick's game
+kicked off and locked. It captures a user's ability to identify value in the
+slate pool before the broader market corrects — essentially, how skilled a
+user is at "buying low" during the draft.
+
+How it works in the data:
+  drafted_odds: American odds stored at the moment the user selected this pick
+  locked_odds:  American odds fetched and stored at the moment of game kickoff
+                (captured by the SLATE_LOCK_JOB when it locks each slate pick)
+
+Both values are stored on every ROSTER_PICK record regardless of whether the
+pick was in the starting slate or on the bench. This enables complete
+historical analysis at every level.
+
+Derived metrics tracked on the user's global career profile:
+
+  AVERAGE ODDS DRIFT (starters): The average change in implied probability
+  between drafted_odds and locked_odds across all picks the user has ever
+  started. A consistently positive drift — meaning picks shortened in odds
+  (became bigger favorites) after the user took them — suggests the user is
+  a skilled drafter who identifies value before the market does. A negative
+  drift suggests their slate tend to lengthen after the draft, meaning they
+  may be systematically overvaluing certain picks or the market is moving
+  against their reads.
+
+  AVERAGE ODDS DRIFT (all picks): Same calculation but including bench slate,
+  giving a full picture of draft quality independent of slate management decisions.
+
+  BEST SINGLE ODDS DRIFT: The largest favorable odds movement on any single
+  pick in the user's history. For example: drafted at +200, locked at -150
+  — a massive swing in implied probability in the user's favor. Displayed as
+  a career highlight on the profile.
+
+  WORST SINGLE ODDS DRIFT: The single worst move in the user's history —
+  a cautionary tale (e.g., took something at -180 that opened up to +220).
+
+  ODDS DRIFT vs. OUTCOME CORRELATION: Whether the user's starts with favorable
+  drift (picks that shortened) actually hit at a higher rate than their slate
+  with unfavorable drift. A strong positive correlation is the mark of a
+  genuinely skilled market reader — they're not just getting lucky when the
+  odds move their way. This is an advanced stat displayed as a secondary
+  insight on the profile.
+
+This cluster of stats is surfaced to users as a "Market IQ" or "Draft Value"
+rating — a number that tells a user how well they're reading the slate pool
+relative to where the market ultimately lands. It is one of the features that
+most differentiates DraftSlate from any existing slate or fantasy product.
+
+--- 18.4 Financial History (Private — User-Visible Only) ---
+
+  Total buy-ins paid (career)
+  Total winnings received (career)
+  Net return (winnings minus buy-ins, all time)
+  ROI percentage
+
+This data is strictly private — visible only to the authenticated user on
+their own account dashboard. It is never displayed publicly.
+
+--- 18.5 Public Profile Display ---
+
+The public-facing user profile shows (with user-configurable visibility per
+stat category):
+  - Display name and avatar
+  - Overall win/loss/tie record
+  - Championship badges (one distinct badge per title won)
+  - 2nd and 3rd place finish badges
+  - Career pick hit rate
+  - Average odds drift (starters) and Draft Value rating
+  - Longest correct pick streak
+  - Number of seasons / leagues played
+  - Currently active leagues (optional — user can hide)
+
+
+================================================================================
+20. KEY BUSINESS RULES & CONSTRAINTS
+================================================================================
+
+This section consolidates critical rules that must be enforced by the system:
+
+  1.  A league must have an even number of teams (required for head-to-head
+      matchup pairing). Odd team counts are prevented at creation.
+
+  2.  A user cannot join a league after the season has started (Week 1 draft
+      has opened or concluded).
+
+  3.  Commissioner cannot change buy-in amount, payout structure, or roster
+      size after the season has begun.
+
+  4.  Payout percentages configured by the commissioner must sum to exactly 100%.
+
+  5.  Each pick in the slate pool can only be drafted by one team per week.
+
+  6.  Odds enforcement is applied at the time of slate pool snapshot creation
+      (when the SLATE_POOL_BUILD_JOB runs), not at the moment of each user's
+      individual pick selection during the draft. In Global Floor mode, each
+      pick must independently meet the floor — no averaging or aggregate
+      loophole. In Per-Slot Bands mode, each slate pick must fall within the odds
+      band defined for the slot it is being drafted into; server-side
+      validation rejects any slate pick/slot combination that violates the band.
+
+  7.  Pick locks are enforced server-side at game kickoff time. Client-side
+      timer display is informational only.
+
+  8.  Starting slate slots lock independently, on a per-pick basis, at the
+      kickoff time of that pick's specific game — not at a universal weekly
+      lock time. This mirrors how fantasy sports handle individual player
+      lock times. A user may swap a Sunday 4:25pm pick in or out of their
+      starting slate right up until that game kicks off, even if their
+      Sunday 1:00pm picks have already locked. If a starting slot is still
+      occupied by an unlocked bench pick when that pick's game kicks off, it
+      locks in its current position (starter or bench) at that moment. There
+      is no system auto-fill — if a user neglects to fill a starting slot and
+      a game kicks off with that slot vacant (because the slate pick assigned there
+      was on the bench and they never moved it), that slot simply scores 0
+      for the week. Managing the timing of swaps relative to game times is
+      an intentional and valued skill layer of the game.
+
+  9.  Auto-pick during draft selects the highest-odds eligible pick above the
+      minimum threshold that has not yet been taken. Ties in odds broken by
+      earliest game time (to maximize the slate pick's "time to play").
+
+  10. A team that forfeits (user account deactivated mid-season) remains in
+      the league on auto-pilot — all future drafts use auto-pick, and their
+      bye weeks in matchups give the opponent a free win.
+
+  11. The platform's 10% commission is taken from the gross pot. The
+      commissioner cannot reduce this percentage or waive it.
+
+  12. Refunds via Stripe are initiated within 24 hours of a league cancellation.
+
+  13. All financial transactions are immutable once confirmed. Corrections
+      require a separate compensating transaction, not an edit to the original.
+
+  14. The draft auto-advance happens only when the previous pick (manual or
+      auto) is fully committed to the database before the next user's timer
+      starts. Race conditions in draft state are resolved via database-level
+      locking or optimistic concurrency.
+
+  15. Users are limited to joining a reasonable number of leagues simultaneously
+      (configurable — default: 10) to prevent farming/abuse.
+
+
+================================================================================
+21. FUTURE CONSIDERATIONS (OUT OF MVP SCOPE)
+================================================================================
+
+These features are explicitly excluded from the MVP but should be kept in mind
+when designing data models and architecture to avoid painting ourselves into
+a corner:
+
+  MULTI-SPORT SUPPORT
+  Extending beyond NFL to NBA, MLB, NHL, college football. The pick_selections
+  and draft_pools tables should include a sport/league field from day one (even
+  if only NFL values are used in MVP).
+
+  ADVANCED STATS & PICK ANALYTICS
+  Per-user pick accuracy trends, best/worst categories, head-to-head history,
+  historical pick performance by player/team. Premium subscription feature.
+
+  BRAND-SPONSORED CHALLENGES
+  A weekly featured "challenge pick" sponsored by a brand — e.g., "Gatorade
+  player of the week over-under." Revenue share with brand partners.
+
+  COMMISSIONER TOOLS EXPANSION
+  Draft order customization, trade windows (swap drafted slate picks between teams
+  before lock), commissioner veto powers.
+
+  SOCIAL FEATURES
+  League chat/message board, pick commentary (users can annotate why they made
+  a slate pick), public pick sharing to social media.
+
+  NATIVE MOBILE APPS
+  MVP ships as a mobile-optimized PWA. Native iOS and Android apps (wrapping
+  the Vue frontend via Capacitor, or fully native) are a post-MVP milestone.
+
+  PICK RESULT SOURCE REDUNDANCY
+  For grading picks, the-odds-api.com may not be the best source for confirmed
+  final player stats. A secondary sports stats API (e.g., a free-tier sports
+  reference API) should be integrated for result grading to ensure accuracy and
+  reduce dependency on a single vendor.
+
+  RESPONSIBLE GAMBLING FEATURES
+  Deposit limits, self-exclusion tools, and responsible gambling messaging.
+  Required in some jurisdictions if the platform ever expands into regulated
+  territory.
+
+  LEGAL COMPLIANCE REVIEW
+  Before launch, a legal review of the "fantasy sports" vs. "gambling" question
+  under applicable state laws is essential. The free-to-play vs. real-money
+  distinction, the skill vs. chance argument, and the draft mechanism all
+  factor into this. This is a business-critical pre-launch task, not a
+  post-launch afterthought.
+
+
+================================================================================
+END OF DOCUMENT
+DraftSlate — Product Specification v1.0
+================================================================================
