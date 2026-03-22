@@ -13,10 +13,12 @@ const tabs = [
 const activeTab = computed(() => {
   return tabs.find((t) => route.path.startsWith(t.path))?.name || ''
 })
+
+const isDraftRoom = computed(() => /\/draft$/.test(route.path))
 </script>
 
 <template>
-  <nav class="fixed bottom-0 left-0 right-0 z-30 bg-ds-bg-secondary border-t border-ds-border safe-area-bottom">
+  <nav v-if="!isDraftRoom" class="fixed bottom-0 left-0 right-0 z-30 bg-ds-bg-secondary border-t border-ds-border safe-area-bottom">
     <div class="flex items-center justify-around h-16">
       <router-link
         v-for="tab in tabs"

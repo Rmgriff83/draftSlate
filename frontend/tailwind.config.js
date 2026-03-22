@@ -47,6 +47,8 @@ export default {
         'ds-glow': '0 0 20px rgba(108, 63, 224, 0.3)',
         'ds-hit': '0 0 16px rgba(0, 210, 106, 0.4)',
         'ds-miss': '0 0 16px rgba(255, 59, 92, 0.4)',
+        'ds-live': '0 0 12px rgba(0, 210, 106, 0.4), 0 0 0 1px rgba(0, 210, 106, 0.3)',
+        'ds-live-bright': '0 0 24px rgba(0, 210, 106, 0.7), 0 0 0 2px rgba(0, 210, 106, 0.5)',
       },
       transitionTimingFunction: {
         'ds-out': 'cubic-bezier(0.16, 1, 0.3, 1)',
@@ -66,6 +68,7 @@ export default {
         'pulse-red': 'pulseRed 1s ease-in-out infinite',
         'score-pop': 'scorePop 400ms cubic-bezier(0.34, 1.56, 0.64, 1)',
         'slide-up': 'slideUp 400ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'live-glow': 'liveGlow 2s ease-in-out infinite',
       },
       keyframes: {
         hitFlash: {
@@ -92,6 +95,14 @@ export default {
         slideUp: {
           '0%': { transform: 'translateY(100%)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        liveGlow: {
+          '0%, 100%': {
+            boxShadow: '0 0 10px rgba(0, 210, 106, 0.3), 0 0 0 1px rgba(0, 210, 106, 0.25)',
+          },
+          '50%': {
+            boxShadow: '0 0 28px rgba(0, 210, 106, 0.7), 0 0 0 2px rgba(0, 210, 106, 0.5)',
+          },
         },
       },
     },

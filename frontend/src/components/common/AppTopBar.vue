@@ -1,11 +1,15 @@
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
+const route = useRoute()
 const router = useRouter()
 const dropdownOpen = ref(false)
+
+const isDraftRoom = computed(() => /\/draft$/.test(route.path))
+const leagueId = computed(() => route.params.id)
 
 function toggleDropdown() {
   dropdownOpen.value = !dropdownOpen.value
@@ -23,9 +27,31 @@ async function handleLogout() {
 </script>
 
 <template>
-  <header class="sticky top-0 z-30 bg-ds-bg-secondary border-b border-ds-border">
+  <header class="sticky top-0 z-30 bg-ds-bg-secondary border-b border-ds-border relative">
     <div class="flex items-center justify-between h-14 px-4">
-      <router-link to="/app/dashboard" class="text-lg font-bold text-ds-primary">
+      <!-- Left slot -->
+      <div class="w-20">
+        <button
+          v-if="isDraftRoom"
+          @click="router.push(`/app/leagues/${leagueId}`)"
+          class="flex items-center gap-1 text-amber-500 hover:text-amber-400 transition-colors"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+          </svg>
+          <span class="text-xs font-semibold">Exit</span>
+        </button>
+        <router-link v-else to="/app/dashboard" class="text-lg font-bold text-ds-primary">
+          DraftSlate
+        </router-link>
+      </div>
+
+      <!-- Center logo (draft mode) -->
+      <router-link
+        v-if="isDraftRoom"
+        to="/app/dashboard"
+        class="text-lg font-bold text-ds-primary absolute left-1/2 -translate-x-1/2"
+      >
         DraftSlate
       </router-link>
 

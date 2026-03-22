@@ -4,14 +4,19 @@ import Pusher from 'pusher-js'
 window.Pusher = Pusher
 
 const echo = new Echo({
-  broadcaster: 'pusher',
-  key: import.meta.env.VITE_PUSHER_APP_KEY || 'app-key',
-  cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER || 'mt1',
-  wsHost: import.meta.env.VITE_PUSHER_HOST || '127.0.0.1',
-  wsPort: import.meta.env.VITE_PUSHER_PORT || 6001,
-  forceTLS: false,
-  disableStats: true,
-  enabledTransports: ['ws'],
+  broadcaster: 'reverb',
+  key: import.meta.env.VITE_REVERB_APP_KEY || 'draftslate-key',
+  wsHost: import.meta.env.VITE_REVERB_HOST || 'localhost',
+  wsPort: import.meta.env.VITE_REVERB_PORT || 8080,
+  wssPort: import.meta.env.VITE_REVERB_PORT || 8080,
+  forceTLS: (import.meta.env.VITE_REVERB_SCHEME || 'http') === 'https',
+  enabledTransports: ['ws', 'wss'],
+  authEndpoint: '/broadcasting/auth',
+  auth: {
+    headers: {
+      Accept: 'application/json',
+    },
+  },
 })
 
 export default echo

@@ -30,6 +30,36 @@ const routes = [
         component: () => import('@/pages/DashboardPage.vue'),
       },
       {
+        path: 'leagues',
+        name: 'leagues',
+        component: () => import('@/pages/LeaguesPage.vue'),
+      },
+      {
+        path: 'leagues/browse',
+        name: 'leagues-browse',
+        component: () => import('@/pages/LeagueBrowsePage.vue'),
+      },
+      {
+        path: 'leagues/create',
+        name: 'leagues-create',
+        component: () => import('@/pages/LeagueCreatePage.vue'),
+      },
+      {
+        path: 'leagues/join/:code',
+        name: 'leagues-invite',
+        component: () => import('@/pages/LeagueInvitePage.vue'),
+      },
+      {
+        path: 'leagues/:id',
+        name: 'league-view',
+        component: () => import('@/pages/LeagueViewPage.vue'),
+      },
+      {
+        path: 'leagues/:id/draft',
+        name: 'league-draft',
+        component: () => import('@/pages/DraftPage.vue'),
+      },
+      {
         path: '',
         redirect: { name: 'dashboard' },
       },
