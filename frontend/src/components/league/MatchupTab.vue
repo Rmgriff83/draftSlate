@@ -4,6 +4,8 @@ import { Icon } from '@iconify/vue'
 import { useSlateStore } from '@/stores/slate'
 import { useSlateHelpers } from '@/composables/useSlateHelpers'
 
+const emit = defineEmits(['open-detail'])
+
 const slate = useSlateStore()
 const {
   typeLabels,
@@ -16,6 +18,7 @@ const {
   liveScore,
   pickProgress,
   pickResultText,
+  formatGameTime,
 } = useSlateHelpers()
 
 const matchup = computed(() => slate.myMatchup)
@@ -198,11 +201,12 @@ const isCompleted = computed(() => matchup.value?.status === 'completed')
             <!-- My pick -->
             <div
               :class="[
-                'ds-card p-2.5 text-left relative',
+                'ds-card p-2.5 text-left relative cursor-pointer',
                 pickIsLive(row.mine) ? 'animate-live-glow border border-ds-green/40' : '',
                 !pickIsLive(row.mine) && row.mine?.pick_selection?.outcome === 'hit' ? 'border-l-2 border-green-500' : '',
                 !pickIsLive(row.mine) && row.mine?.pick_selection?.outcome === 'miss' ? 'border-l-2 border-red-500' : '',
               ]"
+              @click="row.mine && emit('open-detail', row.mine)"
             >
               <template v-if="row.mine">
                 <div class="flex items-center gap-1 mb-1">
@@ -220,7 +224,10 @@ const isCompleted = computed(() => matchup.value?.status === 'completed')
                   </span>
                 </div>
                 <p class="text-xs text-white truncate">{{ row.mine.pick_selection?.description }}</p>
-                <p class="text-[10px] text-gray-500 truncate mt-0.5">{{ row.mine.pick_selection?.game_display }}</p>
+                <p class="text-[10px] text-gray-500 truncate mt-0.5">
+                  {{ row.mine.pick_selection?.game_display }}
+                  <span v-if="formatGameTime(row.mine.pick_selection?.game_time)"> · {{ formatGameTime(row.mine.pick_selection?.game_time) }}</span>
+                </p>
                 <!-- Result summary for graded picks -->
                 <p v-if="pickIsGraded(row.mine) && !pickIsLive(row.mine) && pickResultText(row.mine)" class="text-[10px] font-mono text-gray-300 mt-0.5">
                   {{ pickResultText(row.mine) }}
@@ -291,11 +298,12 @@ const isCompleted = computed(() => matchup.value?.status === 'completed')
             <!-- Opponent pick -->
             <div
               :class="[
-                'ds-card p-2.5 text-right relative',
+                'ds-card p-2.5 text-right relative cursor-pointer',
                 pickIsLive(row.opponent) ? 'animate-live-glow border border-ds-green/40' : '',
                 !pickIsLive(row.opponent) && row.opponent?.pick_selection?.outcome === 'hit' ? 'border-r-2 border-green-500' : '',
                 !pickIsLive(row.opponent) && row.opponent?.pick_selection?.outcome === 'miss' ? 'border-r-2 border-red-500' : '',
               ]"
+              @click="row.opponent && emit('open-detail', row.opponent)"
             >
               <template v-if="row.opponent">
                 <div class="flex items-center gap-1 mb-1 justify-end">
@@ -313,7 +321,10 @@ const isCompleted = computed(() => matchup.value?.status === 'completed')
                   </span>
                 </div>
                 <p class="text-xs text-white truncate">{{ row.opponent.pick_selection?.description }}</p>
-                <p class="text-[10px] text-gray-500 truncate mt-0.5">{{ row.opponent.pick_selection?.game_display }}</p>
+                <p class="text-[10px] text-gray-500 truncate mt-0.5">
+                  {{ row.opponent.pick_selection?.game_display }}
+                  <span v-if="formatGameTime(row.opponent.pick_selection?.game_time)"> · {{ formatGameTime(row.opponent.pick_selection?.game_time) }}</span>
+                </p>
                 <!-- Result summary for graded picks -->
                 <p v-if="pickIsGraded(row.opponent) && !pickIsLive(row.opponent) && pickResultText(row.opponent)" class="text-[10px] font-mono text-gray-300 mt-0.5">
                   {{ pickResultText(row.opponent) }}

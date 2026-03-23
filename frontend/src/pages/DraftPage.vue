@@ -7,7 +7,7 @@ import DraftPickFeed from '@/components/draft/DraftPickFeed.vue'
 import DraftLobby from '@/components/draft/DraftLobby.vue'
 import AvailablePicksList from '@/components/draft/AvailablePicksList.vue'
 import DraftRosterPanel from '@/components/draft/DraftRosterPanel.vue'
-import DraftPickConfirm from '@/components/draft/DraftPickConfirm.vue'
+import DraftPickStudy from '@/components/draft/DraftPickStudy.vue'
 import DraftOrderDisplay from '@/components/draft/DraftOrderDisplay.vue'
 import AutoPickNotice from '@/components/draft/AutoPickNotice.vue'
 
@@ -17,7 +17,7 @@ const draft = useDraftStore()
 
 const leagueId = route.params.id
 const selectedPick = ref(null)
-const showConfirm = ref(false)
+const showStudy = ref(false)
 const showOrder = ref(false)
 const showSlate = ref(true)
 const autoPickToast = ref(null)
@@ -40,18 +40,18 @@ function formatOdds(odds) {
 const aggregateIsPositive = computed(() => draft.aggregateAmerican >= 100)
 
 function selectPick(pick) {
-  if (!draft.isMyTurn || draft.draftState?.status !== 'active') return
+  if (draft.draftState?.status !== 'active') return
   selectedPick.value = pick
-  showConfirm.value = true
+  showStudy.value = true
   pickError.value = ''
 }
 
-async function confirmPick() {
+async function draftFromStudy() {
   if (!selectedPick.value) return
   pickError.value = ''
   const result = await draft.submitPick(leagueId, selectedPick.value.id)
   if (result.success) {
-    showConfirm.value = false
+    showStudy.value = false
     selectedPick.value = null
   } else {
     pickError.value = result.message
@@ -122,14 +122,13 @@ onUnmounted(() => {
       <DraftRosterPanel />
     </template>
 
-    <!-- Pick Confirm Bottom Sheet -->
-    <DraftPickConfirm
-      v-if="showConfirm && selectedPick"
+    <!-- Pick Study Drawer -->
+    <DraftPickStudy
+      v-if="showStudy && selectedPick"
       :pick="selectedPick"
-      :loading="draft.loading"
-      :error="pickError"
-      @confirm="confirmPick"
-      @close="showConfirm = false"
+      :is-my-turn="draft.isMyTurn"
+      @draft="draftFromStudy"
+      @close="showStudy = false"
     />
 
     <!-- Draft Order Modal -->

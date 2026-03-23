@@ -11,8 +11,6 @@ function update(field, value) {
   emit('update:modelValue', { ...props.modelValue, [field]: value })
 }
 
-const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-
 const timezones = [
   { value: 'America/New_York', label: 'Eastern (ET)' },
   { value: 'America/Chicago', label: 'Central (CT)' },
@@ -21,9 +19,11 @@ const timezones = [
 ]
 
 const timerOptions = [30, 45, 60, 90, 120]
+const durationOptions = [1, 2, 3, 4, 5, 6, 7]
+const cutoffOptions = [1, 2, 3, 6, 12, 24, 48]
 
 watch(
-  () => [props.modelValue.draft_day, props.modelValue.draft_time, props.modelValue.pick_timer_seconds],
+  () => [props.modelValue.matchup_duration_days, props.modelValue.draft_time, props.modelValue.pick_timer_seconds, props.modelValue.min_hours_before_game],
   () => {
     emit('valid', true)
   },
@@ -34,18 +34,37 @@ watch(
 <template>
   <div class="space-y-4">
     <div>
-      <label class="block text-sm font-medium text-ds-text-primary mb-2">Draft Day</label>
+      <label class="block text-sm font-medium text-ds-text-primary mb-2">Matchup Duration</label>
+      <p class="text-xs text-ds-text-tertiary mb-2">Drafts recur every N days at the time below</p>
       <div class="flex gap-2 flex-wrap">
         <button
-          v-for="(day, index) in dayNames"
-          :key="index"
-          @click="update('draft_day', index)"
+          v-for="days in durationOptions"
+          :key="days"
+          @click="update('matchup_duration_days', days)"
           class="px-3 py-1.5 text-xs font-medium rounded-ds-sm border transition-colors duration-ds-fast"
-          :class="modelValue.draft_day === index
+          :class="modelValue.matchup_duration_days === days
             ? 'bg-ds-primary text-white border-ds-primary'
             : 'bg-ds-bg-secondary border-ds-border text-ds-text-secondary hover:border-ds-primary/50'"
         >
-          {{ day.slice(0, 3) }}
+          {{ days }}d
+        </button>
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-ds-text-primary mb-2">Event Time Cutoff</label>
+      <p class="text-xs text-ds-text-tertiary mb-2">Exclude events starting within this many hours</p>
+      <div class="flex gap-2 flex-wrap">
+        <button
+          v-for="hours in cutoffOptions"
+          :key="hours"
+          @click="update('min_hours_before_game', hours)"
+          class="px-3 py-1.5 text-xs font-medium rounded-ds-sm border transition-colors duration-ds-fast"
+          :class="modelValue.min_hours_before_game === hours
+            ? 'bg-ds-primary text-white border-ds-primary'
+            : 'bg-ds-bg-secondary border-ds-border text-ds-text-secondary hover:border-ds-primary/50'"
+        >
+          {{ hours }}h
         </button>
       </div>
     </div>

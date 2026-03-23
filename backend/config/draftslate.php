@@ -8,6 +8,7 @@ return [
         'min_buy_in' => 5.00,
         'default_roster_config' => ['moneyline' => 1, 'spread' => 1, 'total' => 1, 'player_prop' => 2],
         'default_aggregate_odds_floor' => -250,
+        'default_bench_slots' => 2,
         'supported_sports' => [
             'basketball_nba' => 'NBA',
             'americanfootball_nfl' => 'NFL',
@@ -15,7 +16,9 @@ return [
             'icehockey_nhl' => 'NHL',
         ],
         'default_pick_timer' => 60,
-        'default_regular_season_weeks' => 14,
+        'default_matchup_duration_days' => 7,
+        'default_total_matchups' => 14,
+        'default_min_hours_before_game' => 1,
     ],
 
     'draft' => [
@@ -42,7 +45,7 @@ return [
         'refresh_interval_hours' => env('ODDS_API_REFRESH_INTERVAL_HOURS', 3),
         'pool_build_minutes_before_draft' => 30,
         'min_hours_before_game' => env('ODDS_API_MIN_HOURS_BEFORE_GAME', 1),
-        'cache_reuse_minutes' => 30,
+        'cache_ttl_seconds' => env('ODDS_API_CACHE_TTL_SECONDS', 180),
     ],
 
     'curation' => [
@@ -55,6 +58,15 @@ return [
             'extremely_unlikely'  => ['min_odds' => 251],
         ],
         'worst_case_risky_odds' => 200,
+    ],
+
+    'game_logs' => [
+        'balldontlie_base_url' => 'https://api.balldontlie.io/v1',
+        'balldontlie_api_key' => env('BALLDONTLIE_API_KEY', ''),
+    ],
+
+    'headshots' => [
+        'disk' => env('HEADSHOTS_DISK', 'public'),
     ],
 
     'platform_commission_rate' => 0.10,

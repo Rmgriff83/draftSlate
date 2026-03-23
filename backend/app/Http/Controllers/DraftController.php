@@ -103,6 +103,7 @@ class DraftController extends Controller
                     'pick_type' => $p->pickSelection->pick_type,
                     'sport' => $p->pickSelection->sport,
                     'game_display' => $p->pickSelection->game_display,
+                    'game_time' => $p->pickSelection->game_time?->toISOString(),
                     'snapshot_odds' => $p->pickSelection->snapshot_odds,
                     'drafted_odds' => $p->drafted_odds,
                     'position' => $p->position,
@@ -295,14 +296,15 @@ class DraftController extends Controller
             // Fetch picks from all selected sports
             $allPicks = $this->oddsApi->fetchForSports($league->sports ?? ['basketball_nba']);
 
-            // Filter by game time only — aggregate odds enforced at draft time
-            $minHoursBeforeGame = config('draftslate.odds_api.min_hours_before_game', 24);
-            $cutoffTime = now()->addHours($minHoursBeforeGame);
+            // Filter by matchup window — only include games that start after the
+            // min-hours cutoff AND before the matchup duration window ends.
+            $cutoffTime = now()->addHours($league->min_hours_before_game);
+            $windowEnd = now()->addDays($league->matchup_duration_days);
 
-            $filteredPicks = array_filter($allPicks, function ($pick) use ($cutoffTime) {
+            $filteredPicks = array_filter($allPicks, function ($pick) use ($cutoffTime, $windowEnd) {
                 if (!empty($pick['game_time'])) {
                     $gameTime = Carbon::parse($pick['game_time']);
-                    if ($gameTime->lte($cutoffTime)) {
+                    if ($gameTime->lte($cutoffTime) || $gameTime->gt($windowEnd)) {
                         return false;
                     }
                 }
@@ -364,11 +366,17 @@ class DraftController extends Controller
             ]);
         }
 
-        // Transition league to active
-        $league->update([
+        // Transition league to active, auto-set season_start_date if not set
+        $updateData = [
             'state' => 'active',
             'current_week' => $slatePool->week ?: 1,
-        ]);
+        ];
+
+        if (!$league->season_start_date) {
+            $updateData['season_start_date'] = now()->tz($league->draft_timezone)->toDateString();
+        }
+
+        $league->update($updateData);
 
         $draft = $this->draftService->initializeDraft($league, $slatePool);
 

@@ -14,6 +14,7 @@ class OddsApiService
     private string $regions;
     private string $oddsFormat;
     private string $bookmaker;
+    private int $cacheTtl;
 
     public function __construct()
     {
@@ -22,6 +23,40 @@ class OddsApiService
         $this->regions = $config['regions'];
         $this->oddsFormat = $config['odds_format'];
         $this->bookmaker = $config['bookmaker'];
+        $this->cacheTtl = (int) ($config['cache_ttl_seconds'] ?? 180);
+    }
+
+    /**
+     * Check Redis cache, on miss do Http::get with apiKey auto-injected,
+     * cache successful response, return null on failure (never caches errors).
+     */
+    private function cachedGet(string $cacheKey, string $url, array $query = []): ?array
+    {
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            Log::info("OddsApiService: Redis HIT for {$cacheKey}");
+            return $cached;
+        }
+
+        try {
+            $response = Http::timeout(15)->get($url, array_merge([
+                'apiKey' => $this->apiKey,
+            ], $query));
+
+            if (!$response->successful()) {
+                Log::warning("OddsApiService: HTTP {$response->status()} for {$url}");
+                return null;
+            }
+
+            $data = $response->json() ?: [];
+            Cache::put($cacheKey, $data, $this->cacheTtl);
+            Log::info("OddsApiService: API response cached for {$cacheKey}");
+
+            return $data;
+        } catch (\Exception $e) {
+            Log::error("OddsApiService: Exception for {$url}", ['error' => $e->getMessage()]);
+            return null;
+        }
     }
 
     /**
@@ -56,50 +91,23 @@ class OddsApiService
      */
     public function fetchGameLinesAndEvents(string $sport): array
     {
-        $cacheKeyLines = "odds_api.game_lines.{$sport}";
-        $cacheKeyEvents = "odds_api.events_raw.{$sport}";
-
-        $cachedLines = Cache::get($cacheKeyLines);
-        $cachedEvents = Cache::get($cacheKeyEvents);
-
-        if ($cachedLines !== null && $cachedEvents !== null) {
-            return [$cachedLines, $cachedEvents];
-        }
-
+        $cacheKey = "odds_api.game_lines_response.{$sport}";
         $markets = config('draftslate.odds_api.game_markets');
 
-        try {
-            $response = Http::timeout(15)->get("{$this->baseUrl}/sports/{$sport}/odds", [
-                'apiKey' => $this->apiKey,
-                'regions' => $this->regions,
-                'oddsFormat' => $this->oddsFormat,
-                'markets' => implode(',', $markets),
-                'bookmakers' => $this->bookmaker,
-            ]);
+        $rawEvents = $this->cachedGet($cacheKey, "{$this->baseUrl}/sports/{$sport}/odds", [
+            'regions' => $this->regions,
+            'oddsFormat' => $this->oddsFormat,
+            'markets' => implode(',', $markets),
+            'bookmakers' => $this->bookmaker,
+        ]);
 
-            if (!$response->successful()) {
-                Log::warning('OddsApiService: Failed to fetch game lines', [
-                    'sport' => $sport,
-                    'status' => $response->status(),
-                ]);
-                return [[], []];
-            }
-
-            $rawEvents = $response->json() ?: [];
-            $gameLines = $this->parseGameLinesResponse($rawEvents, $sport);
-
-            // Cache both the parsed lines and the raw event data
-            Cache::put($cacheKeyLines, $gameLines, now()->addMinutes(30));
-            Cache::put($cacheKeyEvents, $rawEvents, now()->addMinutes(30));
-
-            return [$gameLines, $rawEvents];
-        } catch (\Exception $e) {
-            Log::error('OddsApiService: Exception fetching game lines', [
-                'sport' => $sport,
-                'error' => $e->getMessage(),
-            ]);
+        if ($rawEvents === null) {
             return [[], []];
         }
+
+        $gameLines = $this->parseGameLinesResponse($rawEvents, $sport);
+
+        return [$gameLines, $rawEvents];
     }
 
     /**
@@ -129,9 +137,12 @@ class OddsApiService
             return [];
         }
 
-        $cacheKey = "odds_api.player_props.{$sport}." . md5(implode(',', $markets));
-        $cached = Cache::get($cacheKey);
-        if ($cached) {
+        // Aggregate fast-path: return immediately if already assembled
+        $marketsHash = md5(implode(',', $markets));
+        $aggCacheKey = "odds_api.player_props.{$sport}.{$marketsHash}";
+        $cached = Cache::get($aggCacheKey);
+        if ($cached !== null) {
+            Log::info("OddsApiService: Redis HIT for {$aggCacheKey}");
             return $cached;
         }
 
@@ -156,66 +167,84 @@ class OddsApiService
         });
 
         if (empty($futureEvents)) {
-            Cache::put($cacheKey, [], now()->addMinutes(30));
+            Cache::put($aggCacheKey, [], $this->cacheTtl);
             return [];
         }
 
         $marketsStr = implode(',', $markets);
         $futureEvents = array_values($futureEvents);
 
-        // Concurrent HTTP requests — all prop calls fire in parallel
-        $responses = Http::pool(function (Pool $pool) use ($futureEvents, $sport, $marketsStr) {
-            foreach ($futureEvents as $i => $event) {
-                $pool->as("event_{$i}")
-                    ->timeout(15)
-                    ->get(
-                        "{$this->baseUrl}/sports/{$sport}/events/{$event['id']}/odds",
-                        [
-                            'apiKey' => $this->apiKey,
-                            'regions' => $this->regions,
-                            'oddsFormat' => $this->oddsFormat,
-                            'markets' => $marketsStr,
-                            'bookmakers' => $this->bookmaker,
-                        ]
-                    );
-            }
-        });
-
-        $results = [];
-
-        foreach ($futureEvents as $i => $event) {
-            $key = "event_{$i}";
-            try {
-                $response = $responses[$key] ?? null;
-                if (!$response || !$response->successful()) {
-                    continue;
-                }
-
-                $propData = $response->json();
-
-                if (!empty($propData['bookmakers'])) {
-                    foreach ($propData['bookmakers'] as $bookmaker) {
-                        foreach ($bookmaker['markets'] as $marketData) {
-                            $marketKey = $marketData['key'] ?? '';
-                            $parsed = $this->parsePlayerPropOutcomes(
-                                $propData, $marketData, $marketKey, $sport
-                            );
-                            if (!empty($parsed)) {
-                                $results = array_merge($results, $parsed);
-                            }
-                        }
-                    }
-                }
-            } catch (\Exception $e) {
-                Log::error('OddsApiService: Exception parsing player props', [
-                    'sport' => $sport,
-                    'event_id' => $event['id'],
-                    'error' => $e->getMessage(),
-                ]);
+        // Split events into cached and uncached
+        $cachedResponses = [];
+        $uncachedEvents = [];
+        foreach ($futureEvents as $event) {
+            $eventCacheKey = "odds_api.event_props.{$sport}.{$event['id']}.{$marketsHash}";
+            $eventCached = Cache::get($eventCacheKey);
+            if ($eventCached !== null) {
+                $cachedResponses[$event['id']] = $eventCached;
+            } else {
+                $uncachedEvents[] = $event;
             }
         }
 
-        Cache::put($cacheKey, $results, now()->addMinutes(30));
+        // Only fire HTTP for uncached events
+        if (!empty($uncachedEvents)) {
+            $responses = Http::pool(function (Pool $pool) use ($uncachedEvents, $sport, $marketsStr) {
+                foreach ($uncachedEvents as $i => $event) {
+                    $pool->as("event_{$i}")
+                        ->timeout(15)
+                        ->get(
+                            "{$this->baseUrl}/sports/{$sport}/events/{$event['id']}/odds",
+                            [
+                                'apiKey' => $this->apiKey,
+                                'regions' => $this->regions,
+                                'oddsFormat' => $this->oddsFormat,
+                                'markets' => $marketsStr,
+                                'bookmakers' => $this->bookmaker,
+                            ]
+                        );
+                }
+            });
+
+            foreach ($uncachedEvents as $i => $event) {
+                $key = "event_{$i}";
+                try {
+                    $response = $responses[$key] ?? null;
+                    if ($response && $response->successful()) {
+                        $propData = $response->json();
+                        $eventCacheKey = "odds_api.event_props.{$sport}.{$event['id']}.{$marketsHash}";
+                        Cache::put($eventCacheKey, $propData, $this->cacheTtl);
+                        $cachedResponses[$event['id']] = $propData;
+                    }
+                } catch (\Exception $e) {
+                    Log::error('OddsApiService: Exception fetching player props', [
+                        'sport' => $sport,
+                        'event_id' => $event['id'],
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        // Parse all responses (cached + freshly fetched)
+        $results = [];
+        foreach ($cachedResponses as $propData) {
+            if (!empty($propData['bookmakers'])) {
+                foreach ($propData['bookmakers'] as $bookmaker) {
+                    foreach ($bookmaker['markets'] as $marketData) {
+                        $marketKey = $marketData['key'] ?? '';
+                        $parsed = $this->parsePlayerPropOutcomes(
+                            $propData, $marketData, $marketKey, $sport
+                        );
+                        if (!empty($parsed)) {
+                            $results = array_merge($results, $parsed);
+                        }
+                    }
+                }
+            }
+        }
+
+        Cache::put($aggCacheKey, $results, $this->cacheTtl);
 
         return $results;
     }
@@ -234,28 +263,20 @@ class OddsApiService
 
         $results = [];
 
-        foreach (array_chunk($eventIds, 10) as $chunk) {
-            try {
-                foreach ($chunk as $eventId) {
-                    $response = Http::timeout(15)->get(
-                        "{$this->baseUrl}/sports/{$sport}/events/{$eventId}/odds",
-                        [
-                            'apiKey' => $this->apiKey,
-                            'regions' => $this->regions,
-                            'oddsFormat' => $this->oddsFormat,
-                            'markets' => $allMarkets,
-                            'bookmakers' => $this->bookmaker,
-                        ]
-                    );
+        foreach ($eventIds as $eventId) {
+            $data = $this->cachedGet(
+                "odds_api.event_odds.{$sport}.{$eventId}",
+                "{$this->baseUrl}/sports/{$sport}/events/{$eventId}/odds",
+                [
+                    'regions' => $this->regions,
+                    'oddsFormat' => $this->oddsFormat,
+                    'markets' => $allMarkets,
+                    'bookmakers' => $this->bookmaker,
+                ]
+            );
 
-                    if ($response->successful()) {
-                        $results[$eventId] = $response->json();
-                    }
-                }
-            } catch (\Exception $e) {
-                Log::error('OddsApiService: Exception refreshing odds', [
-                    'error' => $e->getMessage(),
-                ]);
+            if ($data !== null) {
+                $results[$eventId] = $data;
             }
         }
 
@@ -314,79 +335,93 @@ class OddsApiService
      */
     public function fetchScores(string $sport): array
     {
-        $cacheKey = "odds_api.scores.{$sport}";
-        $cached = Cache::get($cacheKey);
-        if ($cached !== null) {
-            return $cached;
-        }
+        $rawScores = $this->cachedGet(
+            "odds_api.scores_raw.{$sport}",
+            "{$this->baseUrl}/sports/{$sport}/scores",
+            ['daysFrom' => 1]
+        );
 
-        try {
-            $response = Http::timeout(15)->get("{$this->baseUrl}/sports/{$sport}/scores", [
-                'apiKey' => $this->apiKey,
-                'daysFrom' => 1,
-            ]);
-
-            if (!$response->successful()) {
-                return [];
-            }
-
-            $results = [];
-            foreach ($response->json() ?: [] as $event) {
-                $eventId = $event['id'] ?? '';
-                if (empty($eventId) || empty($event['scores'])) {
-                    continue;
-                }
-
-                $homeTeam = $event['home_team'] ?? '';
-                $awayTeam = $event['away_team'] ?? '';
-                $homeScore = null;
-                $awayScore = null;
-
-                foreach ($event['scores'] as $s) {
-                    if ($s['name'] === $homeTeam) {
-                        $homeScore = (int) $s['score'];
-                    } elseif ($s['name'] === $awayTeam) {
-                        $awayScore = (int) $s['score'];
-                    }
-                }
-
-                $results[$eventId] = [
-                    'home_team' => $homeTeam,
-                    'away_team' => $awayTeam,
-                    'home_score' => $homeScore,
-                    'away_score' => $awayScore,
-                    'completed' => $event['completed'] ?? false,
-                    'last_update' => $event['last_update'] ?? null,
-                ];
-            }
-
-            // Short cache — scores change frequently
-            Cache::put($cacheKey, $results, now()->addMinutes(2));
-
-            return $results;
-        } catch (\Exception $e) {
-            Log::error('OddsApiService: Exception fetching scores', [
-                'sport' => $sport,
-                'error' => $e->getMessage(),
-            ]);
+        if ($rawScores === null) {
             return [];
         }
+
+        $results = [];
+        foreach ($rawScores as $event) {
+            $eventId = $event['id'] ?? '';
+            if (empty($eventId) || empty($event['scores'])) {
+                continue;
+            }
+
+            $homeTeam = $event['home_team'] ?? '';
+            $awayTeam = $event['away_team'] ?? '';
+            $homeScore = null;
+            $awayScore = null;
+
+            foreach ($event['scores'] as $s) {
+                if ($s['name'] === $homeTeam) {
+                    $homeScore = (int) $s['score'];
+                } elseif ($s['name'] === $awayTeam) {
+                    $awayScore = (int) $s['score'];
+                }
+            }
+
+            $results[$eventId] = [
+                'home_team' => $homeTeam,
+                'away_team' => $awayTeam,
+                'home_score' => $homeScore,
+                'away_score' => $awayScore,
+                'completed' => $event['completed'] ?? false,
+                'last_update' => $event['last_update'] ?? null,
+            ];
+        }
+
+        return $results;
     }
 
     /**
      * Check remaining API quota from response headers.
+     * Manual cache — reads header, not JSON body, so can't use cachedGet.
      */
     public function getRemainingQuota(): int
     {
+        $cacheKey = 'odds_api.remaining_quota';
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            Log::info("OddsApiService: Redis HIT for {$cacheKey}");
+            return $cached;
+        }
+
         try {
             $response = Http::timeout(10)->get("{$this->baseUrl}/sports", [
                 'apiKey' => $this->apiKey,
             ]);
 
-            return (int) $response->header('x-requests-remaining', 0);
+            $remaining = (int) $response->header('x-requests-remaining', 0);
+            Cache::put($cacheKey, $remaining, $this->cacheTtl);
+            Log::info("OddsApiService: API response cached for {$cacheKey}");
+
+            return $remaining;
         } catch (\Exception $e) {
             return 0;
         }
+    }
+
+    /**
+     * Fetch historical odds snapshot for a sport at a specific point in time.
+     *
+     * @return array|null Response with timestamp, previous_timestamp, next_timestamp, and data array
+     */
+    public function fetchHistoricalOdds(string $sport, string $date): ?array
+    {
+        $dateHash = md5($date);
+        $cacheKey = "odds_api.historical.{$sport}.{$dateHash}";
+
+        return $this->cachedGet($cacheKey, "{$this->baseUrl}/historical/sports/{$sport}/odds", [
+            'date' => $date,
+            'regions' => $this->regions,
+            'oddsFormat' => $this->oddsFormat,
+            'bookmakers' => $this->bookmaker,
+        ]);
     }
 
     private function parsePlayerPropOutcomes(array $eventData, array $marketData, string $market, string $sport): array

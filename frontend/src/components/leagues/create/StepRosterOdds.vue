@@ -29,13 +29,19 @@ function updateSlotCount(type, delta) {
   emit('update:modelValue', { ...props.modelValue, roster_config: newConfig })
 }
 
+function updateBenchSlots(delta) {
+  const current = props.modelValue.bench_slots || 2
+  const next = Math.max(1, Math.min(7, current + delta))
+  emit('update:modelValue', { ...props.modelValue, bench_slots: next })
+}
+
 function updateFloor(value) {
   emit('update:modelValue', { ...props.modelValue, aggregate_odds_floor: parseInt(value) || -250 })
 }
 
 watch(
-  () => totalStarters.value,
-  (total) => {
+  () => [totalStarters.value, props.modelValue.bench_slots],
+  ([total]) => {
     emit('valid', total >= 1 && total <= 8)
   },
   { immediate: true }
@@ -75,9 +81,31 @@ watch(
         </div>
       </div>
 
-      <div class="mt-3 flex items-center justify-between text-xs">
+      <div class="mt-3 text-xs">
         <span class="text-ds-text-secondary font-medium">Total Starters: {{ totalStarters }}</span>
-        <span class="text-ds-text-tertiary">Bench: {{ totalStarters }} slots (1:1 ratio)</span>
+      </div>
+    </div>
+
+    <div>
+      <label class="block text-sm font-medium text-ds-text-primary mb-1">Bench Slots</label>
+      <p class="text-xs text-ds-text-tertiary mb-2">How many bench picks each team drafts per week (1-7)</p>
+      <div class="flex items-center gap-3">
+        <button
+          @click="updateBenchSlots(-1)"
+          :disabled="(modelValue.bench_slots || 2) <= 1"
+          class="w-10 h-10 rounded-ds-sm bg-ds-bg-secondary border border-ds-border text-ds-text-primary hover:bg-ds-bg-hover transition-colors disabled:opacity-30"
+        >
+          -
+        </button>
+        <span class="text-lg font-bold text-ds-text-primary w-8 text-center">{{ modelValue.bench_slots || 2 }}</span>
+        <button
+          @click="updateBenchSlots(1)"
+          :disabled="(modelValue.bench_slots || 2) >= 7"
+          class="w-10 h-10 rounded-ds-sm bg-ds-bg-secondary border border-ds-border text-ds-text-primary hover:bg-ds-bg-hover transition-colors disabled:opacity-30"
+        >
+          +
+        </button>
+        <span class="text-xs text-ds-text-tertiary">Total roster: {{ totalStarters + (modelValue.bench_slots || 2) }} per week</span>
       </div>
     </div>
 

@@ -9,7 +9,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 class CheckAndDispatchSlatePoolBuilds implements ShouldQueue
@@ -46,7 +45,7 @@ class CheckAndDispatchSlatePoolBuilds implements ShouldQueue
             }
 
             // Calculate next draft time for this league
-            $nextDraftTime = $this->getNextDraftTime($league);
+            $nextDraftTime = $league->getNextDraftTime();
             if (!$nextDraftTime) {
                 continue;
             }
@@ -61,25 +60,4 @@ class CheckAndDispatchSlatePoolBuilds implements ShouldQueue
         }
     }
 
-    private function getNextDraftTime(League $league): ?Carbon
-    {
-        $now = Carbon::now($league->draft_timezone);
-        $draftDay = $league->draft_day; // 0=Sunday, 6=Saturday
-        $draftTime = $league->draft_time; // "HH:MM:SS"
-
-        // Find the next occurrence of the draft day
-        $next = $now->copy()->next($draftDay);
-        $timeParts = explode(':', $draftTime);
-        $next->setTime((int) $timeParts[0], (int) $timeParts[1], (int) ($timeParts[2] ?? 0));
-
-        // If the draft day is today and the time hasn't passed
-        $today = $now->copy();
-        $today->setTime((int) $timeParts[0], (int) $timeParts[1], (int) ($timeParts[2] ?? 0));
-
-        if ($now->dayOfWeek === $draftDay && $now->lt($today)) {
-            $next = $today;
-        }
-
-        return $next->utc();
-    }
 }

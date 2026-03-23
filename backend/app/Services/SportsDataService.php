@@ -13,6 +13,46 @@ class SportsDataService
         'Referer' => 'https://www.nba.com',
     ];
 
+    private int $cacheTtl;
+
+    public function __construct()
+    {
+        $this->cacheTtl = (int) config('draftslate.odds_api.cache_ttl_seconds', 180);
+    }
+
+    /**
+     * Check Redis cache, on miss do Http::get with custom headers,
+     * cache successful response, return null on failure (never caches errors).
+     */
+    private function cachedGet(string $cacheKey, string $url, array $headers = []): ?array
+    {
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            Log::info("SportsDataService: Redis HIT for {$cacheKey}");
+            return $cached;
+        }
+
+        try {
+            $response = Http::withHeaders($headers)
+                ->timeout(10)
+                ->get($url);
+
+            if (!$response->successful()) {
+                Log::warning("SportsDataService: HTTP {$response->status()} for {$url}");
+                return null;
+            }
+
+            $data = $response->json() ?: [];
+            Cache::put($cacheKey, $data, $this->cacheTtl);
+            Log::info("SportsDataService: API response cached for {$cacheKey}");
+
+            return $data;
+        } catch (\Exception $e) {
+            Log::error("SportsDataService: Exception for {$url}", ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
     /**
      * Fetch live NBA box scores and return player stats keyed by team matchup.
      *
@@ -20,110 +60,101 @@ class SportsDataService
      */
     public function fetchNbaBoxScores(): array
     {
+        // Top-level assembled cache
         $cacheKey = 'sports_data.nba_box_scores';
         $cached = Cache::get($cacheKey);
         if ($cached !== null) {
+            Log::info("SportsDataService: Redis HIT for {$cacheKey}");
             return $cached;
         }
 
-        try {
-            // Step 1: Get today's scoreboard for game IDs
-            $scoreboard = Http::withHeaders($this->nbaHeaders)
-                ->timeout(10)
-                ->get('https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json');
+        $scoreboardData = $this->cachedGet(
+            'sports_data.nba_scoreboard',
+            'https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json',
+            $this->nbaHeaders
+        );
 
-            if (!$scoreboard->successful()) {
-                return [];
-            }
-
-            $games = $scoreboard->json()['scoreboard']['games'] ?? [];
-            $results = [];
-
-            // Step 2: Fetch box score for each active/completed game
-            foreach ($games as $game) {
-                $gameId = $game['gameId'] ?? null;
-                $status = $game['gameStatus'] ?? 1; // 1=not started, 2=in progress, 3=final
-                if (!$gameId || $status < 2) {
-                    continue; // Skip games that haven't started
-                }
-
-                $boxScore = $this->fetchNbaBoxScore($gameId);
-                if (empty($boxScore)) {
-                    continue;
-                }
-
-                $gameData = $boxScore['game'] ?? [];
-                $homeTeamName = $gameData['homeTeam']['teamName'] ?? '';
-                $awayTeamName = $gameData['awayTeam']['teamName'] ?? '';
-                $homeCity = $gameData['homeTeam']['teamCity'] ?? '';
-                $awayCity = $gameData['awayTeam']['teamCity'] ?? '';
-                $homeFull = trim("{$homeCity} {$homeTeamName}");
-                $awayFull = trim("{$awayCity} {$awayTeamName}");
-
-                $players = [];
-
-                foreach (['homeTeam', 'awayTeam'] as $side) {
-                    foreach ($gameData[$side]['players'] ?? [] as $player) {
-                        $name = $player['name'] ?? '';
-                        $stats = $player['statistics'] ?? [];
-                        if (empty($name) || empty($stats)) {
-                            continue;
-                        }
-
-                        $players[$name] = [
-                            'points' => (int) ($stats['points'] ?? 0),
-                            'rebounds' => (int) ($stats['reboundsTotal'] ?? 0),
-                            'assists' => (int) ($stats['assists'] ?? 0),
-                            'threes' => (int) ($stats['threePointersMade'] ?? 0),
-                            'minutes' => $stats['minutesCalculated'] ?? null,
-                            'team' => $side === 'homeTeam' ? $homeFull : $awayFull,
-                        ];
-                    }
-                }
-
-                // Key by multiple formats for flexible matching
-                $matchupKey = "{$awayFull} @ {$homeFull}";
-                $gameInfo = [
-                    'home_team' => $homeFull,
-                    'away_team' => $awayFull,
-                    'period' => (int) ($gameData['period'] ?? 0),
-                    'clock' => $gameData['gameClock'] ?? '',
-                    'status' => $gameData['gameStatusText'] ?? '',
-                    'players' => $players,
-                ];
-
-                $results[$matchupKey] = $gameInfo;
-                // Also key by home team name alone for fuzzy matching
-                $results["home:{$homeFull}"] = $gameInfo;
-                $results["home:{$homeTeamName}"] = $gameInfo;
-                $results["away:{$awayFull}"] = $gameInfo;
-                $results["away:{$awayTeamName}"] = $gameInfo;
-            }
-
-            // Cache for 2 minutes
-            Cache::put($cacheKey, $results, now()->addMinutes(2));
-
-            return $results;
-        } catch (\Exception $e) {
-            Log::error('SportsDataService: Error fetching NBA box scores', [
-                'error' => $e->getMessage(),
-            ]);
+        if ($scoreboardData === null) {
             return [];
         }
+
+        $games = $scoreboardData['scoreboard']['games'] ?? [];
+        $results = [];
+
+        foreach ($games as $game) {
+            $gameId = $game['gameId'] ?? null;
+            $status = $game['gameStatus'] ?? 1; // 1=not started, 2=in progress, 3=final
+            if (!$gameId || $status < 2) {
+                continue; // Skip games that haven't started
+            }
+
+            $boxScore = $this->fetchNbaBoxScore($gameId);
+            if (empty($boxScore)) {
+                continue;
+            }
+
+            $gameData = $boxScore['game'] ?? [];
+            $homeTeamName = $gameData['homeTeam']['teamName'] ?? '';
+            $awayTeamName = $gameData['awayTeam']['teamName'] ?? '';
+            $homeCity = $gameData['homeTeam']['teamCity'] ?? '';
+            $awayCity = $gameData['awayTeam']['teamCity'] ?? '';
+            $homeFull = trim("{$homeCity} {$homeTeamName}");
+            $awayFull = trim("{$awayCity} {$awayTeamName}");
+
+            $players = [];
+
+            foreach (['homeTeam', 'awayTeam'] as $side) {
+                foreach ($gameData[$side]['players'] ?? [] as $player) {
+                    $name = $player['name'] ?? '';
+                    $stats = $player['statistics'] ?? [];
+                    if (empty($name) || empty($stats)) {
+                        continue;
+                    }
+
+                    $players[$name] = [
+                        'points' => (int) ($stats['points'] ?? 0),
+                        'rebounds' => (int) ($stats['reboundsTotal'] ?? 0),
+                        'assists' => (int) ($stats['assists'] ?? 0),
+                        'threes' => (int) ($stats['threePointersMade'] ?? 0),
+                        'minutes' => $stats['minutesCalculated'] ?? null,
+                        'team' => $side === 'homeTeam' ? $homeFull : $awayFull,
+                    ];
+                }
+            }
+
+            // Key by multiple formats for flexible matching
+            $matchupKey = "{$awayFull} @ {$homeFull}";
+            $gameInfo = [
+                'home_team' => $homeFull,
+                'away_team' => $awayFull,
+                'period' => (int) ($gameData['period'] ?? 0),
+                'clock' => $gameData['gameClock'] ?? '',
+                'status' => $gameData['gameStatusText'] ?? '',
+                'players' => $players,
+            ];
+
+            $results[$matchupKey] = $gameInfo;
+            // Also key by home team name alone for fuzzy matching
+            $results["home:{$homeFull}"] = $gameInfo;
+            $results["home:{$homeTeamName}"] = $gameInfo;
+            $results["away:{$awayFull}"] = $gameInfo;
+            $results["away:{$awayTeamName}"] = $gameInfo;
+        }
+
+        Cache::put($cacheKey, $results, $this->cacheTtl);
+
+        return $results;
     }
 
     private function fetchNbaBoxScore(string $gameId): array
     {
-        try {
-            $response = Http::withHeaders($this->nbaHeaders)
-                ->timeout(10)
-                ->get("https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{$gameId}.json");
+        $data = $this->cachedGet(
+            "sports_data.nba_boxscore.{$gameId}",
+            "https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{$gameId}.json",
+            $this->nbaHeaders
+        );
 
-            return $response->successful() ? $response->json() : [];
-        } catch (\Exception $e) {
-            Log::debug("SportsDataService: Failed to fetch box score for {$gameId}");
-            return [];
-        }
+        return $data ?? [];
     }
 
     /**

@@ -56,6 +56,21 @@ const sportIconColors = {
   icehockey_nhl: 'text-sky-400',
 }
 
+function formatGameTime(gameTime) {
+  if (!gameTime) return null
+  const d = new Date(gameTime)
+  const now = new Date()
+  const isToday = d.toDateString() === now.toDateString()
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const isTomorrow = d.toDateString() === tomorrow.toDateString()
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  if (isToday) return `Today ${time}`
+  if (isTomorrow) return `Tmrw ${time}`
+  const month = d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  return `${month} ${time}`
+}
+
 function getBench(slot) {
   return draft.myBench.find((p) => p.slot_number === slot)
 }
@@ -83,8 +98,11 @@ function getBench(slot) {
             class="w-3.5 h-3.5 flex-shrink-0"
             :class="sportIconColors[entry.pick.sport] || 'text-ds-text-tertiary'"
           />
-          <p class="text-xs text-ds-text-primary flex-1 truncate">{{ entry.pick.description }}</p>
-          <span class="text-xs font-mono text-ds-text-secondary">{{ formatOdds(entry.pick.drafted_odds) }}</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-xs text-ds-text-primary truncate">{{ entry.pick.description }}</p>
+            <p v-if="formatGameTime(entry.pick.game_time)" class="text-[10px] text-ds-text-tertiary truncate">{{ formatGameTime(entry.pick.game_time) }}</p>
+          </div>
+          <span class="text-xs font-mono text-ds-text-secondary flex-shrink-0">{{ formatOdds(entry.pick.drafted_odds) }}</span>
         </template>
         <p v-else class="text-xs text-ds-text-tertiary italic flex-1">Empty</p>
       </div>
@@ -111,8 +129,11 @@ function getBench(slot) {
               class="w-3.5 h-3.5 flex-shrink-0"
               :class="sportIconColors[getBench(slot).sport] || 'text-ds-text-tertiary'"
             />
-            <p class="text-xs text-ds-text-primary flex-1 truncate">{{ getBench(slot).description }}</p>
-            <span class="text-xs font-mono text-ds-text-secondary">{{ formatOdds(getBench(slot).drafted_odds) }}</span>
+            <div class="flex-1 min-w-0">
+              <p class="text-xs text-ds-text-primary truncate">{{ getBench(slot).description }}</p>
+              <p v-if="formatGameTime(getBench(slot).game_time)" class="text-[10px] text-ds-text-tertiary truncate">{{ formatGameTime(getBench(slot).game_time) }}</p>
+            </div>
+            <span class="text-xs font-mono text-ds-text-secondary flex-shrink-0">{{ formatOdds(getBench(slot).drafted_odds) }}</span>
           </template>
           <p v-else class="text-xs text-ds-text-tertiary italic flex-1">Empty</p>
         </div>

@@ -21,7 +21,7 @@ class ScoringService
         }
 
         $rd = $pick->result_data;
-        $gameComplete = !empty($rd['completed'])
+        $gameComplete = ($rd['completed'] === true)
             || str_starts_with(strtolower($rd['game_status'] ?? ''), 'final');
 
         // If the game was cancelled or postponed
@@ -52,7 +52,7 @@ class ScoringService
         $pick->update(['outcome' => $outcome]);
     }
 
-    private function gradeMoneyline(PickSelection $pick, array $rd): string
+    private function gradeMoneyline(PickSelection $pick, array $rd): ?string
     {
         $homeScore = $rd['home_score'] ?? null;
         $awayScore = $rd['away_score'] ?? null;
@@ -60,7 +60,7 @@ class ScoringService
         $awayTeam = $rd['away_team'] ?? $pick->away_team ?? '';
 
         if ($homeScore === null || $awayScore === null) {
-            return 'void';
+            return null; // Scores not available yet — retry later
         }
 
         // Parse picked team from description: "Team Name ML (...)"
@@ -79,14 +79,14 @@ class ScoringService
         return $pickedWon ? 'hit' : 'miss';
     }
 
-    private function gradeSpread(PickSelection $pick, array $rd): string
+    private function gradeSpread(PickSelection $pick, array $rd): ?string
     {
         $homeScore = $rd['home_score'] ?? null;
         $awayScore = $rd['away_score'] ?? null;
         $homeTeam = $rd['home_team'] ?? $pick->home_team ?? '';
 
         if ($homeScore === null || $awayScore === null) {
-            return 'void';
+            return null; // Scores not available yet — retry later
         }
 
         // Parse: "Team Name +/-X.X (...)"
@@ -105,13 +105,13 @@ class ScoringService
         return 'miss';
     }
 
-    private function gradeTotal(PickSelection $pick, array $rd): string
+    private function gradeTotal(PickSelection $pick, array $rd): ?string
     {
         $homeScore = $rd['home_score'] ?? null;
         $awayScore = $rd['away_score'] ?? null;
 
         if ($homeScore === null || $awayScore === null) {
-            return 'void';
+            return null; // Scores not available yet — retry later
         }
 
         // Parse: "Over/Under X.X (...)"

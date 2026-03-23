@@ -26,6 +26,7 @@ const {
   liveScore,
   pickProgress,
   pickResultText,
+  formatGameTime,
 } = useSlateHelpers()
 
 const ps = computed(() => props.pick.pick_selection || {})
@@ -129,7 +130,10 @@ const cardClasses = computed(() => {
 
         <!-- Game display + game status / result -->
         <div class="flex items-center gap-2">
-          <p class="text-xs text-gray-400 truncate">{{ ps.game_display }}</p>
+          <p class="text-xs text-gray-400 truncate">
+            {{ ps.game_display }}
+            <span v-if="formatGameTime(ps.game_time)" class="text-gray-500"> · {{ formatGameTime(ps.game_time) }}</span>
+          </p>
           <template v-if="live && score">
             <span class="text-[10px] text-gray-500">·</span>
             <span class="text-xs font-bold text-ds-green">

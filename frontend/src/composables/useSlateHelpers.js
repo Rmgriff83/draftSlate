@@ -75,6 +75,21 @@ export function useSlateHelpers() {
     return drift > 0 ? 'text-green-400' : 'text-red-400'
   }
 
+  function formatGameTime(gameTime) {
+    if (!gameTime) return null
+    const d = new Date(gameTime)
+    const now = new Date()
+    const isToday = d.toDateString() === now.toDateString()
+    const tomorrow = new Date(now)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const isTomorrow = d.toDateString() === tomorrow.toDateString()
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    if (isToday) return `Today ${time}`
+    if (isTomorrow) return `Tomorrow ${time}`
+    const month = d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+    return `${month} ${time}`
+  }
+
   function isLive(pick) {
     const ps = pick?.pick_selection
     if (!ps) return false
@@ -261,6 +276,7 @@ export function useSlateHelpers() {
     oddsColor,
     formatDrift,
     driftColor,
+    formatGameTime,
     isLive,
     liveScore,
     pickProgress,

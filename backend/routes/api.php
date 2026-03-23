@@ -4,8 +4,11 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\DraftController;
+use App\Http\Controllers\HeadshotController;
 use App\Http\Controllers\LeagueController;
+use App\Http\Controllers\TeamLogoController;
 use App\Http\Controllers\MatchupController;
+use App\Http\Controllers\PickController;
 use App\Http\Controllers\SlateController;
 use App\Http\Controllers\StandingsController;
 use Illuminate\Support\Facades\Route;
@@ -50,6 +53,14 @@ Route::prefix('v1')->group(function () {
         Route::get('/leagues/{league}/matchups/{week}', [MatchupController::class, 'index']);
         Route::get('/leagues/{league}/matchups/{week}/mine', [MatchupController::class, 'mine']);
         Route::get('/leagues/{league}/standings', [StandingsController::class, 'index']);
+
+        // Headshots & Logos
+        Route::get('/headshots/{league}', [HeadshotController::class, 'show']);
+        Route::get('/logos/{league}', [TeamLogoController::class, 'show']);
+
+        // Pick detail
+        Route::get('/picks/{pickSelection}/study', [PickController::class, 'study']);
+        Route::get('/picks/{pickSelection}/odds-history', [PickController::class, 'oddsHistory']);
 
         // Draft
         Route::get('/leagues/{league}/draft', [DraftController::class, 'show']);

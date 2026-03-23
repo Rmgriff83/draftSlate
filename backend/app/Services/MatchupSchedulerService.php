@@ -18,7 +18,7 @@ class MatchupSchedulerService
         }
 
         $ids = $memberships->pluck('id')->values()->toArray();
-        $totalWeeks = $league->regular_season_weeks ?? ($count - 1);
+        $totalWeeks = $league->total_matchups ?? ($count - 1);
 
         // Circle method round-robin: fix first team, rotate the rest
         $fixed = $ids[0];

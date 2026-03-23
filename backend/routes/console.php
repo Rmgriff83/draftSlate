@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\CheckAndDispatchSlatePoolBuilds;
+use App\Jobs\OddsHistoryJob;
 use App\Jobs\OddsRefreshJob;
 use App\Jobs\ResultGradingJob;
 use App\Jobs\SlateLockJob;
@@ -23,3 +24,6 @@ Schedule::job(new ResultGradingJob)->everyFiveMinutes();
 
 // Refresh odds for upcoming games (every 15 minutes)
 Schedule::job(new OddsRefreshJob)->everyFifteenMinutes();
+
+// Capture historical odds snapshots for line movement charts (every 30 minutes)
+Schedule::job(new OddsHistoryJob)->everyThirtyMinutes();

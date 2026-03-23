@@ -48,7 +48,7 @@ const isActiveState = computed(() =>
 )
 
 const maxWeek = computed(() =>
-  league.value?.current_week || league.value?.regular_season_weeks || 1
+  league.value?.current_week || league.value?.total_matchups || 1
 )
 
 function stateLabel(state) {
@@ -66,8 +66,6 @@ function stateColor(state) {
   }
   return colors[state] || ''
 }
-
-const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 const tzLabels = {
   'America/New_York': 'ET',
@@ -263,7 +261,7 @@ onUnmounted(() => {
               <p class="text-[10px] text-ds-text-tertiary uppercase">Teams</p>
             </div>
             <div class="text-center">
-              <p class="text-lg font-bold text-ds-text-primary">{{ league.starter_slots }}+{{ league.bench_slots }}</p>
+              <p class="text-lg font-bold text-ds-text-primary">{{ league.starter_count }}+{{ league.bench_slots }}</p>
               <p class="text-[10px] text-ds-text-tertiary uppercase">Roster</p>
             </div>
             <div class="text-center">
@@ -290,15 +288,19 @@ onUnmounted(() => {
         <div class="ds-card divide-y divide-ds-border">
           <div class="p-3 flex justify-between">
             <span class="text-xs text-ds-text-tertiary">Draft</span>
-            <span class="text-xs text-ds-text-primary">{{ dayNames[league.draft_day] }}s {{ league.draft_time?.slice(0, 5) }} {{ tzLabels[league.draft_timezone] || league.draft_timezone }}</span>
+            <span class="text-xs text-ds-text-primary">Every {{ league.matchup_duration_days }}d at {{ league.draft_time?.slice(0, 5) }} {{ tzLabels[league.draft_timezone] || league.draft_timezone }}</span>
           </div>
           <div class="p-3 flex justify-between">
             <span class="text-xs text-ds-text-tertiary">Pick Timer</span>
             <span class="text-xs text-ds-text-primary">{{ league.pick_timer_seconds }}s</span>
           </div>
           <div class="p-3 flex justify-between">
+            <span class="text-xs text-ds-text-tertiary">Event Cutoff</span>
+            <span class="text-xs text-ds-text-primary">{{ league.min_hours_before_game }}h before game</span>
+          </div>
+          <div class="p-3 flex justify-between">
             <span class="text-xs text-ds-text-tertiary">Season</span>
-            <span class="text-xs text-ds-text-primary">{{ league.regular_season_weeks }} weeks</span>
+            <span class="text-xs text-ds-text-primary">{{ league.total_matchups }} matchups</span>
           </div>
           <div class="p-3 flex justify-between">
             <span class="text-xs text-ds-text-tertiary">Playoffs</span>
@@ -431,7 +433,7 @@ onUnmounted(() => {
           </div>
           <template v-else>
             <MyPicksTab v-if="activeTab === 'picks'" @open-detail="openPickDetail" />
-            <MatchupTab v-else-if="activeTab === 'matchup'" />
+            <MatchupTab v-else-if="activeTab === 'matchup'" @open-detail="openPickDetail" />
             <StandingsTab v-else-if="activeTab === 'standings'" />
           </template>
         </div>

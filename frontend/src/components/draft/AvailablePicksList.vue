@@ -101,6 +101,21 @@ function formatOdds(odds) {
   return odds > 0 ? `+${odds}` : `${odds}`
 }
 
+function formatGameTime(gameTime) {
+  if (!gameTime) return null
+  const d = new Date(gameTime)
+  const now = new Date()
+  const isToday = d.toDateString() === now.toDateString()
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const isTomorrow = d.toDateString() === tomorrow.toDateString()
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  if (isToday) return `Today ${time}`
+  if (isTomorrow) return `Tmrw ${time}`
+  const month = d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  return `${month} ${time}`
+}
+
 function oddsColor(odds) {
   if (odds >= 100) return 'text-ds-green'
   if (odds >= -150) return 'text-ds-yellow'
@@ -175,11 +190,11 @@ function wouldBust(pick) {
           v-for="pick in filteredPicks"
           :key="pick.id"
           @click="$emit('select', pick)"
-          :disabled="!isMyTurn || wouldBust(pick)"
+          :disabled="wouldBust(pick)"
           class="w-full ds-card p-3 my-1 text-left transition-all duration-ds-fast"
           :class="[
-            !isMyTurn ? 'opacity-60 cursor-default' :
             wouldBust(pick) ? 'opacity-40 cursor-not-allowed' :
+            !isMyTurn ? 'opacity-80 cursor-pointer hover:ring-1 hover:ring-ds-border' :
             'hover:ring-2 hover:ring-ds-primary/50 cursor-pointer',
             hasUnfilledStarters && !isMatchingType(pick) ? 'opacity-50' : ''
           ]"
@@ -198,8 +213,9 @@ function wouldBust(pick) {
                   class="text-[10px] font-bold px-1.5 py-0.5 rounded"
                   :class="typeBadgeClasses[pick.pick_type] || 'bg-ds-bg-hover text-ds-text-tertiary'"
                 >{{ typeLabels[pick.pick_type] || pick.pick_type }}</span>
-                <p class="text-xs text-ds-text-tertiary">
+                <p class="text-xs text-ds-text-tertiary truncate">
                   {{ pick.game_display }}
+                  <span v-if="formatGameTime(pick.game_time)" class="text-ds-text-tertiary/70"> · {{ formatGameTime(pick.game_time) }}</span>
                 </p>
                 <span
                   v-if="hasUnfilledStarters && !isMatchingType(pick)"

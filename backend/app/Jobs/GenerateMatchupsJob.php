@@ -43,8 +43,8 @@ class GenerateMatchupsJob implements ShouldQueue
                 ['league_id' => $league->id, 'year' => now()->year],
                 [
                     'start_week' => 1,
-                    'end_week' => $league->regular_season_weeks ?? 13,
-                    'playoff_start_week' => ($league->regular_season_weeks ?? 13) + 1,
+                    'end_week' => $league->total_matchups ?? 14,
+                    'playoff_start_week' => ($league->total_matchups ?? 14) + 1,
                     'status' => 'active',
                 ],
             );

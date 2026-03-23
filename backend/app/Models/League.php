@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -17,6 +18,10 @@ class League extends Model
         'roster_config' => '{"moneyline":1,"spread":1,"total":1,"player_prop":2}',
         'sports' => '["basketball_nba"]',
         'aggregate_odds_floor' => -250,
+        'bench_slots' => 2,
+        'matchup_duration_days' => 7,
+        'total_matchups' => 14,
+        'min_hours_before_game' => 1,
     ];
 
     protected $fillable = [
@@ -30,11 +35,14 @@ class League extends Model
         'roster_config',
         'sports',
         'aggregate_odds_floor',
-        'draft_day',
+        'bench_slots',
+        'matchup_duration_days',
         'draft_time',
         'draft_timezone',
         'pick_timer_seconds',
-        'regular_season_weeks',
+        'total_matchups',
+        'min_hours_before_game',
+        'season_start_date',
         'playoff_format',
         'invite_code',
         'current_week',
@@ -47,11 +55,14 @@ class League extends Model
             'roster_config' => 'array',
             'sports' => 'array',
             'aggregate_odds_floor' => 'integer',
+            'bench_slots' => 'integer',
             'buy_in' => 'decimal:2',
             'max_teams' => 'integer',
-            'draft_day' => 'integer',
+            'matchup_duration_days' => 'integer',
             'pick_timer_seconds' => 'integer',
-            'regular_season_weeks' => 'integer',
+            'total_matchups' => 'integer',
+            'min_hours_before_game' => 'integer',
+            'season_start_date' => 'date',
             'current_week' => 'integer',
         ];
     }
@@ -63,7 +74,7 @@ class League extends Model
 
     public function getBenchSlotsCount(): int
     {
-        return $this->getStarterSlotsCount();
+        return $this->bench_slots;
     }
 
     public function getTotalRounds(): int
@@ -91,6 +102,30 @@ class League extends Model
         }
 
         return $unfilled;
+    }
+
+    public function getNextDraftTime(): ?Carbon
+    {
+        if (!$this->season_start_date) {
+            return null;
+        }
+
+        $tz = $this->draft_timezone ?: 'America/New_York';
+        $now = Carbon::now($tz);
+        $timeParts = explode(':', $this->draft_time ?? '20:00:00');
+
+        for ($n = 1; $n <= $this->total_matchups; $n++) {
+            $draftDate = $this->season_start_date->copy()
+                ->setTimezone($tz)
+                ->addDays(($n - 1) * $this->matchup_duration_days)
+                ->setTime((int) $timeParts[0], (int) $timeParts[1], (int) ($timeParts[2] ?? 0));
+
+            if ($draftDate->gt($now)) {
+                return $draftDate->utc();
+            }
+        }
+
+        return null;
     }
 
     public function commissioner(): BelongsTo

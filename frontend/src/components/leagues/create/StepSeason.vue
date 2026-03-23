@@ -19,9 +19,9 @@ const playoffFormats = [
 ]
 
 watch(
-  () => [props.modelValue.regular_season_weeks, props.modelValue.playoff_format],
-  ([weeks]) => {
-    emit('valid', weeks >= 8 && weeks <= 18)
+  () => [props.modelValue.total_matchups, props.modelValue.playoff_format],
+  ([matchups]) => {
+    emit('valid', matchups >= 5 && matchups <= 52)
   },
   { immediate: true }
 )
@@ -30,22 +30,22 @@ watch(
 <template>
   <div class="space-y-4">
     <div>
-      <label class="block text-sm font-medium text-ds-text-primary mb-1">Regular Season Weeks</label>
+      <label class="block text-sm font-medium text-ds-text-primary mb-1">Total Matchups</label>
       <div class="flex items-center gap-3">
         <button
-          @click="update('regular_season_weeks', Math.max(8, modelValue.regular_season_weeks - 1))"
+          @click="update('total_matchups', Math.max(5, modelValue.total_matchups - 1))"
           class="w-10 h-10 rounded-ds-sm bg-ds-bg-secondary border border-ds-border text-ds-text-primary hover:bg-ds-bg-hover transition-colors"
         >
           -
         </button>
-        <span class="text-lg font-bold text-ds-text-primary w-8 text-center">{{ modelValue.regular_season_weeks }}</span>
+        <span class="text-lg font-bold text-ds-text-primary w-8 text-center">{{ modelValue.total_matchups }}</span>
         <button
-          @click="update('regular_season_weeks', Math.min(18, modelValue.regular_season_weeks + 1))"
+          @click="update('total_matchups', Math.min(52, modelValue.total_matchups + 1))"
           class="w-10 h-10 rounded-ds-sm bg-ds-bg-secondary border border-ds-border text-ds-text-primary hover:bg-ds-bg-hover transition-colors"
         >
           +
         </button>
-        <span class="text-xs text-ds-text-tertiary">weeks</span>
+        <span class="text-xs text-ds-text-tertiary">matchups</span>
       </div>
     </div>
 

@@ -73,14 +73,14 @@ class SlatePoolBuildJob implements ShouldQueue
             $gameLines = $oddsApi->fetchNflGameLines();
             $allPicks = array_merge($playerProps, $gameLines);
 
-            // Filter picks based on league rules
-            $minHoursBeforeGame = config('draftslate.odds_api.min_hours_before_game', 24);
-            $cutoffTime = now()->addHours($minHoursBeforeGame);
+            // Filter picks based on league rules — matchup window + odds
+            $cutoffTime = now()->addHours($league->min_hours_before_game);
+            $windowEnd = now()->addDays($league->matchup_duration_days);
 
-            $filteredPicks = array_filter($allPicks, function ($pick) use ($league, $oddsMath, $cutoffTime) {
-                // Exclude games too close to draft time
+            $filteredPicks = array_filter($allPicks, function ($pick) use ($league, $oddsMath, $cutoffTime, $windowEnd) {
+                // Exclude games outside the matchup window
                 $gameTime = Carbon::parse($pick['game_time']);
-                if ($gameTime->lte($cutoffTime)) {
+                if ($gameTime->lte($cutoffTime) || $gameTime->gt($windowEnd)) {
                     return false;
                 }
 
@@ -145,7 +145,7 @@ class SlatePoolBuildJob implements ShouldQueue
                     'slate_pool_id' => $slatePool->id,
                     'status' => 'preparing',
                     'draft_order' => [],
-                    'total_rounds' => $league->starter_slots + $league->bench_slots,
+                    'total_rounds' => $league->getTotalRounds(),
                 ]
             );
 

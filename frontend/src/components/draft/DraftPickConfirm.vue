@@ -10,6 +10,21 @@ defineEmits(['confirm', 'close'])
 function formatOdds(odds) {
   return odds > 0 ? `+${odds}` : `${odds}`
 }
+
+function formatGameTime(gameTime) {
+  if (!gameTime) return null
+  const d = new Date(gameTime)
+  const now = new Date()
+  const isToday = d.toDateString() === now.toDateString()
+  const tomorrow = new Date(now)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const isTomorrow = d.toDateString() === tomorrow.toDateString()
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  if (isToday) return `Today ${time}`
+  if (isTomorrow) return `Tomorrow ${time}`
+  const month = d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  return `${month} ${time}`
+}
 </script>
 
 <template>
@@ -27,6 +42,9 @@ function formatOdds(odds) {
             <span class="text-xs text-ds-text-tertiary">{{ pick.game_display }}</span>
             <span class="text-sm font-mono font-bold text-ds-primary">{{ formatOdds(pick.snapshot_odds) }}</span>
           </div>
+          <p v-if="formatGameTime(pick.game_time)" class="text-xs text-ds-text-tertiary mt-1">
+            {{ formatGameTime(pick.game_time) }}
+          </p>
           <p v-if="pick.pick_type" class="text-xs text-ds-text-tertiary mt-1">
             Type: {{ pick.pick_type }} {{ pick.category ? `(${pick.category})` : '' }}
           </p>

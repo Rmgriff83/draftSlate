@@ -46,6 +46,12 @@ class ResultGradingJob implements ShouldQueue
         $gradedCount = 0;
 
         foreach ($picks as $pick) {
+            // Refresh to get latest result_data (OddsRefreshJob may have updated it)
+            $pick->refresh();
+            if ($pick->outcome !== 'pending' || $pick->result_data === null) {
+                continue;
+            }
+
             $previousOutcome = $pick->outcome;
             $scoring->gradePick($pick);
 

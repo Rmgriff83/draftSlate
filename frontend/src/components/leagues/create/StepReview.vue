@@ -7,8 +7,6 @@ const props = defineProps({
 
 const emit = defineEmits(['edit'])
 
-const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-
 const tzLabels = {
   'America/New_York': 'ET',
   'America/Chicago': 'CT',
@@ -90,7 +88,7 @@ function payoutLabel(ps) {
       <div class="p-3 flex items-start justify-between">
         <div>
           <p class="text-xs text-ds-text-tertiary">Roster & Odds</p>
-          <p class="text-sm font-medium text-ds-text-primary">{{ rosterBreakdown }} = {{ totalStarters }} starters + {{ totalStarters }} bench</p>
+          <p class="text-sm font-medium text-ds-text-primary">{{ rosterBreakdown }} = {{ totalStarters }} starters + {{ form.bench_slots }} bench</p>
           <p class="text-xs text-ds-text-tertiary mt-0.5">Aggregate floor: {{ form.aggregate_odds_floor }}</p>
         </div>
         <button @click="$emit('edit', 3)" class="text-xs text-ds-primary hover:underline">Edit</button>
@@ -100,8 +98,8 @@ function payoutLabel(ps) {
       <div class="p-3 flex items-start justify-between">
         <div>
           <p class="text-xs text-ds-text-tertiary">Draft Settings</p>
-          <p class="text-sm font-medium text-ds-text-primary">{{ dayNames[form.draft_day] }}s at {{ form.draft_time?.slice(0, 5) }} {{ tzLabels[form.draft_timezone] || form.draft_timezone }}</p>
-          <p class="text-xs text-ds-text-tertiary mt-0.5">{{ form.pick_timer_seconds }}s pick timer</p>
+          <p class="text-sm font-medium text-ds-text-primary">Every {{ form.matchup_duration_days }} day{{ form.matchup_duration_days !== 1 ? 's' : '' }} at {{ form.draft_time?.slice(0, 5) }} {{ tzLabels[form.draft_timezone] || form.draft_timezone }}</p>
+          <p class="text-xs text-ds-text-tertiary mt-0.5">{{ form.pick_timer_seconds }}s pick timer · {{ form.min_hours_before_game }}h event cutoff</p>
         </div>
         <button @click="$emit('edit', 4)" class="text-xs text-ds-primary hover:underline">Edit</button>
       </div>
@@ -110,7 +108,7 @@ function payoutLabel(ps) {
       <div class="p-3 flex items-start justify-between">
         <div>
           <p class="text-xs text-ds-text-tertiary">Season & Playoffs</p>
-          <p class="text-sm font-medium text-ds-text-primary">{{ form.regular_season_weeks }} weeks &middot; {{ playoffLabels[form.playoff_format] }}</p>
+          <p class="text-sm font-medium text-ds-text-primary">{{ form.total_matchups }} matchups · {{ playoffLabels[form.playoff_format] }}</p>
         </div>
         <button @click="$emit('edit', 5)" class="text-xs text-ds-primary hover:underline">Edit</button>
       </div>
