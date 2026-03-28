@@ -118,6 +118,8 @@ class SportsDataService
                         'threes' => (int) ($stats['threePointersMade'] ?? 0),
                         'minutes' => $stats['minutesCalculated'] ?? null,
                         'team' => $side === 'homeTeam' ? $homeFull : $awayFull,
+                        'played' => $player['played'] ?? '1',
+                        'not_playing_reason' => $player['notPlayingReason'] ?? null,
                     ];
                 }
             }
@@ -135,6 +137,202 @@ class SportsDataService
 
             $results[$matchupKey] = $gameInfo;
             // Also key by home team name alone for fuzzy matching
+            $results["home:{$homeFull}"] = $gameInfo;
+            $results["home:{$homeTeamName}"] = $gameInfo;
+            $results["away:{$awayFull}"] = $gameInfo;
+            $results["away:{$awayTeamName}"] = $gameInfo;
+        }
+
+        Cache::put($cacheKey, $results, $this->cacheTtl);
+
+        return $results;
+    }
+
+    /**
+     * Fetch live NBA box scores with a shorter cache TTL (60s) for in-progress games.
+     */
+    public function fetchNbaBoxScoresLive(): array
+    {
+        $cacheKey = 'sports_data.nba_box_scores_live';
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            Log::info("SportsDataService: Redis HIT for {$cacheKey}");
+            return $cached;
+        }
+
+        $scoreboardData = $this->cachedGet(
+            'sports_data.nba_scoreboard',
+            'https://cdn.nba.com/static/json/liveData/scoreboard/todaysScoreboard_00.json',
+            $this->nbaHeaders
+        );
+
+        if ($scoreboardData === null) {
+            return [];
+        }
+
+        $games = $scoreboardData['scoreboard']['games'] ?? [];
+        $results = [];
+
+        foreach ($games as $game) {
+            $gameId = $game['gameId'] ?? null;
+            $status = $game['gameStatus'] ?? 1;
+            if (!$gameId || $status < 2) {
+                continue;
+            }
+
+            $boxScore = $this->fetchNbaBoxScore($gameId);
+            if (empty($boxScore)) {
+                continue;
+            }
+
+            $gameData = $boxScore['game'] ?? [];
+            $homeTeamName = $gameData['homeTeam']['teamName'] ?? '';
+            $awayTeamName = $gameData['awayTeam']['teamName'] ?? '';
+            $homeCity = $gameData['homeTeam']['teamCity'] ?? '';
+            $awayCity = $gameData['awayTeam']['teamCity'] ?? '';
+            $homeFull = trim("{$homeCity} {$homeTeamName}");
+            $awayFull = trim("{$awayCity} {$awayTeamName}");
+
+            $players = [];
+
+            foreach (['homeTeam', 'awayTeam'] as $side) {
+                foreach ($gameData[$side]['players'] ?? [] as $player) {
+                    $name = $player['name'] ?? '';
+                    $stats = $player['statistics'] ?? [];
+                    if (empty($name) || empty($stats)) {
+                        continue;
+                    }
+
+                    $players[$name] = [
+                        'points' => (int) ($stats['points'] ?? 0),
+                        'rebounds' => (int) ($stats['reboundsTotal'] ?? 0),
+                        'assists' => (int) ($stats['assists'] ?? 0),
+                        'threes' => (int) ($stats['threePointersMade'] ?? 0),
+                        'minutes' => $stats['minutesCalculated'] ?? null,
+                        'team' => $side === 'homeTeam' ? $homeFull : $awayFull,
+                        'played' => $player['played'] ?? '1',
+                        'not_playing_reason' => $player['notPlayingReason'] ?? null,
+                    ];
+                }
+            }
+
+            $matchupKey = "{$awayFull} @ {$homeFull}";
+            $gameInfo = [
+                'home_team' => $homeFull,
+                'away_team' => $awayFull,
+                'period' => (int) ($gameData['period'] ?? 0),
+                'clock' => $gameData['gameClock'] ?? '',
+                'status' => $gameData['gameStatusText'] ?? '',
+                'players' => $players,
+            ];
+
+            $results[$matchupKey] = $gameInfo;
+            $results["home:{$homeFull}"] = $gameInfo;
+            $results["home:{$homeTeamName}"] = $gameInfo;
+            $results["away:{$awayFull}"] = $gameInfo;
+            $results["away:{$awayTeamName}"] = $gameInfo;
+        }
+
+        Cache::put($cacheKey, $results, 60);
+
+        return $results;
+    }
+
+    /**
+     * Fetch NBA box scores for a specific past date using the league schedule.
+     * Returns the same format as fetchNbaBoxScoresLive().
+     */
+    public function fetchNbaBoxScoresForDate(string $date): array
+    {
+        $cacheKey = "sports_data.nba_box_scores_date.{$date}";
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            Log::info("SportsDataService: Redis HIT for {$cacheKey}");
+            return $cached;
+        }
+
+        $schedule = $this->cachedGet(
+            'sports_data.nba_schedule',
+            'https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json',
+            $this->nbaHeaders
+        );
+
+        if ($schedule === null) {
+            return [];
+        }
+
+        $gameDates = $schedule['leagueSchedule']['gameDates'] ?? [];
+        $gameIds = [];
+
+        foreach ($gameDates as $dateEntry) {
+            $parsedDate = date('Y-m-d', strtotime($dateEntry['gameDate'] ?? ''));
+            if ($parsedDate !== $date) {
+                continue;
+            }
+
+            foreach ($dateEntry['games'] ?? [] as $game) {
+                $status = $game['gameStatus'] ?? 1;
+                if ($status >= 2 && !empty($game['gameId'])) {
+                    $gameIds[] = $game['gameId'];
+                }
+            }
+            break;
+        }
+
+        if (empty($gameIds)) {
+            Cache::put($cacheKey, [], $this->cacheTtl);
+            return [];
+        }
+
+        $results = [];
+        foreach ($gameIds as $gameId) {
+            $boxScore = $this->fetchNbaBoxScore($gameId);
+            if (empty($boxScore)) {
+                continue;
+            }
+
+            $gameData = $boxScore['game'] ?? [];
+            $homeTeamName = $gameData['homeTeam']['teamName'] ?? '';
+            $awayTeamName = $gameData['awayTeam']['teamName'] ?? '';
+            $homeCity = $gameData['homeTeam']['teamCity'] ?? '';
+            $awayCity = $gameData['awayTeam']['teamCity'] ?? '';
+            $homeFull = trim("{$homeCity} {$homeTeamName}");
+            $awayFull = trim("{$awayCity} {$awayTeamName}");
+
+            $players = [];
+
+            foreach (['homeTeam', 'awayTeam'] as $side) {
+                foreach ($gameData[$side]['players'] ?? [] as $player) {
+                    $name = $player['name'] ?? '';
+                    $stats = $player['statistics'] ?? [];
+                    if (empty($name) || empty($stats)) {
+                        continue;
+                    }
+
+                    $players[$name] = [
+                        'points' => (int) ($stats['points'] ?? 0),
+                        'rebounds' => (int) ($stats['reboundsTotal'] ?? 0),
+                        'assists' => (int) ($stats['assists'] ?? 0),
+                        'threes' => (int) ($stats['threePointersMade'] ?? 0),
+                        'minutes' => $stats['minutesCalculated'] ?? null,
+                        'team' => $side === 'homeTeam' ? $homeFull : $awayFull,
+                        'played' => $player['played'] ?? '1',
+                        'not_playing_reason' => $player['notPlayingReason'] ?? null,
+                    ];
+                }
+            }
+
+            $matchupKey = "{$awayFull} @ {$homeFull}";
+            $gameInfo = [
+                'home_team' => $homeFull,
+                'away_team' => $awayFull,
+                'period' => (int) ($gameData['period'] ?? 0),
+                'clock' => $gameData['gameClock'] ?? '',
+                'status' => $gameData['gameStatusText'] ?? '',
+                'players' => $players,
+            ];
+
+            $results[$matchupKey] = $gameInfo;
             $results["home:{$homeFull}"] = $gameInfo;
             $results["home:{$homeTeamName}"] = $gameInfo;
             $results["away:{$awayFull}"] = $gameInfo;

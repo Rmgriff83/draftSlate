@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/utils/api'
 import echo from '@/utils/echo'
+import { playTick, playYourTurn } from '@/utils/draftSounds'
 
 export const useDraftStore = defineStore('draft', () => {
   const draftState = ref(null)
@@ -10,12 +11,23 @@ export const useDraftStore = defineStore('draft', () => {
   const error = ref('')
   const timerSeconds = ref(0)
   const pickFeed = ref([])
+  const autoDraftMembers = ref([])
+  const preDraftSeconds = ref(0)
+  const presentMembers = ref([])
   let timerInterval = null
+  let preDraftInterval = null
+  let countdownPollInterval = null
+  let countdownPollLeagueId = null
   let channel = null
 
-  const isMyTurn = computed(() =>
-    draftState.value?.is_my_turn || false
+  const isInCountdown = computed(() =>
+    draftState.value?.status === 'active' && !draftState.value?.picks_started
   )
+
+  const isMyTurn = computed(() => {
+    if (isInCountdown.value) return false
+    return draftState.value?.is_my_turn || false
+  })
 
   const myMembershipId = computed(() =>
     draftState.value?.my_membership_id || null
@@ -47,7 +59,7 @@ export const useDraftStore = defineStore('draft', () => {
     Object.values(rosterConfig.value).reduce((sum, v) => sum + (v || 0), 0)
   )
 
-  const benchSlots = computed(() => starterCount.value)
+  const benchSlots = computed(() => draftState.value?.bench_slots ?? 2)
 
   const myStartersByType = computed(() => {
     const config = rosterConfig.value || {}
@@ -91,6 +103,10 @@ export const useDraftStore = defineStore('draft', () => {
     if (prob >= 0.5) return Math.round(-100 * prob / (1 - prob))
     return Math.round(100 * (1 - prob) / prob)
   })
+
+  const amInAutoDraft = computed(() =>
+    autoDraftMembers.value.includes(myMembershipId.value)
+  )
 
   const currentDrafter = computed(() => {
     if (!draftState.value) return null
@@ -169,6 +185,7 @@ export const useDraftStore = defineStore('draft', () => {
     try {
       const { data } = await api.get(`/api/v1/leagues/${leagueId}/draft`)
       draftState.value = data.data
+      autoDraftMembers.value = data.data.auto_draft_members || []
 
       // Seed pick feed from existing picks (most recent first)
       const existingPicks = data.data.picks || []
@@ -189,6 +206,10 @@ export const useDraftStore = defineStore('draft', () => {
           }))
       }
 
+      // Active draft in countdown: start pre-draft timer and load pool
+      if (data.data.status === 'active' && !data.data.picks_started && data.data.draft_starts_at) {
+        startPreDraftTimer()
+      }
       startTimer()
       return { success: true }
     } catch (e) {
@@ -229,20 +250,18 @@ export const useDraftStore = defineStore('draft', () => {
     }
   }
 
-  async function startDraft(leagueId) {
-    loading.value = true
+  async function disableAutoDraft(leagueId) {
     try {
-      const { data } = await api.post(`/api/v1/leagues/${leagueId}/draft/start`)
-      // Reload state immediately so the commissioner sees the draft begin.
-      await Promise.all([loadDraft(leagueId), loadPool(leagueId)])
-      return { success: true, data: data.data }
+      await api.post(`/api/v1/leagues/${leagueId}/draft/autodraft/disable`)
+      autoDraftMembers.value = autoDraftMembers.value.filter(
+        (id) => id !== myMembershipId.value
+      )
+      return { success: true }
     } catch (e) {
       return {
         success: false,
-        message: e.response?.data?.message || 'Failed to start draft',
+        message: e.response?.data?.message || 'Failed to disable autodraft',
       }
-    } finally {
-      loading.value = false
     }
   }
 
@@ -251,25 +270,61 @@ export const useDraftStore = defineStore('draft', () => {
       echo.leave(`draft.${leagueId}`)
     }
 
-    channel = echo.private(`draft.${leagueId}`)
+    countdownPollLeagueId = leagueId
+
+    channel = echo.join(`draft.${leagueId}`)
+      .here((users) => {
+        presentMembers.value = users
+      })
+      .joining((user) => {
+        if (!presentMembers.value.find((u) => u.id === user.id)) {
+          presentMembers.value = [...presentMembers.value, user]
+        }
+      })
+      .leaving((user) => {
+        presentMembers.value = presentMembers.value.filter((u) => u.id !== user.id)
+      })
       .listen('.DraftStarted', (e) => {
         if (draftState.value) {
           Object.assign(draftState.value, {
             id: e.draft_id,
             status: 'active',
             draft_order: e.draft_order,
+            draft_order_weights: e.draft_order_weights,
+            draft_starts_at: e.draft_starts_at,
             current_drafter_id: e.current_drafter_id,
             current_round: e.current_round,
             total_rounds: e.total_rounds,
             pick_timer_seconds: e.pick_timer_seconds,
             current_pick_started_at: e.timer_started_at,
-            is_my_turn: e.current_drafter_id === myMembershipId.value,
+            picks_started: e.timer_started_at != null,
+            is_my_turn: e.timer_started_at != null && e.current_drafter_id === myMembershipId.value,
             members: e.members,
             picks: [],
           })
-          startTimer()
+
+          // If timer_started_at is null, we're in countdown — start pre-draft timer
+          if (!e.timer_started_at && e.draft_starts_at) {
+            startPreDraftTimer()
+          } else {
+            startTimer()
+          }
+
           // Load the pick pool for all users
           loadPool(leagueId)
+        }
+      })
+      .listen('.DraftPicksBegin', (e) => {
+        if (draftState.value) {
+          stopPreDraftTimer()
+          preDraftSeconds.value = 0
+          draftState.value.picks_started = true
+          draftState.value.current_pick_started_at = e.current_pick_started_at
+          draftState.value.current_drafter_id = e.current_drafter_id
+          draftState.value.pick_timer_seconds = e.pick_timer_seconds
+          draftState.value.is_my_turn = e.current_drafter_id === myMembershipId.value
+          if (draftState.value.is_my_turn) playYourTurn()
+          startTimer()
         }
       })
       .listen('.DraftPickMade', (e) => {
@@ -284,6 +339,9 @@ export const useDraftStore = defineStore('draft', () => {
               description: e.pick.description,
               pick_type: e.pick.pick_type,
               sport: e.pick.sport,
+              player_name: e.pick.player_name,
+              home_team: e.pick.home_team,
+              away_team: e.pick.away_team,
               game_display: e.pick.game_display,
               snapshot_odds: e.pick.snapshot_odds,
               drafted_odds: e.pick.drafted_odds,
@@ -324,6 +382,13 @@ export const useDraftStore = defineStore('draft', () => {
           draftState.value.current_pick_index = e.current_pick_index
           draftState.value.current_pick_started_at = e.timer_started_at
           draftState.value.is_my_turn = e.current_drafter_id === myMembershipId.value
+          if (draftState.value.is_my_turn) playYourTurn()
+          if (e.pick_timer_seconds != null) {
+            draftState.value.pick_timer_seconds = e.pick_timer_seconds
+          }
+          if (e.auto_draft_members != null) {
+            autoDraftMembers.value = e.auto_draft_members
+          }
           startTimer()
         }
       })
@@ -342,6 +407,7 @@ export const useDraftStore = defineStore('draft', () => {
       channel = null
     }
     stopTimer()
+    stopPreDraftTimer()
   }
 
   function startTimer() {
@@ -354,6 +420,9 @@ export const useDraftStore = defineStore('draft', () => {
     function tick() {
       const elapsed = Math.floor((Date.now() - startedAt) / 1000)
       timerSeconds.value = Math.max(0, pickTimerSeconds - elapsed)
+      if (timerSeconds.value <= 5 && timerSeconds.value > 0 && isMyTurn.value) {
+        playTick(timerSeconds.value)
+      }
     }
 
     tick()
@@ -367,14 +436,64 @@ export const useDraftStore = defineStore('draft', () => {
     }
   }
 
+  function startPreDraftTimer() {
+    stopPreDraftTimer()
+    const draftStartsAt = draftState.value?.draft_starts_at
+    if (!draftStartsAt) return
+
+    function tick() {
+      const remaining = Math.floor((new Date(draftStartsAt).getTime() - Date.now()) / 1000)
+      preDraftSeconds.value = Math.max(0, remaining)
+
+      // Countdown expired but picks haven't started — poll for the transition
+      if (remaining <= 0 && !draftState.value?.picks_started) {
+        startCountdownPoll()
+      }
+    }
+
+    tick()
+    preDraftInterval = setInterval(tick, 1000)
+  }
+
+  function startCountdownPoll() {
+    if (countdownPollInterval || !countdownPollLeagueId) return
+    countdownPollInterval = setInterval(async () => {
+      await loadDraft(countdownPollLeagueId)
+      if (draftState.value?.picks_started) {
+        stopCountdownPoll()
+        startTimer()
+        await loadPool(countdownPollLeagueId)
+      }
+    }, 3000)
+  }
+
+  function stopCountdownPoll() {
+    if (countdownPollInterval) {
+      clearInterval(countdownPollInterval)
+      countdownPollInterval = null
+    }
+  }
+
+  function stopPreDraftTimer() {
+    if (preDraftInterval) {
+      clearInterval(preDraftInterval)
+      preDraftInterval = null
+    }
+    stopCountdownPoll()
+  }
+
   function $reset() {
     draftState.value = null
     availablePicks.value = []
     loading.value = false
     error.value = ''
     timerSeconds.value = 0
+    preDraftSeconds.value = 0
     pickFeed.value = []
+    autoDraftMembers.value = []
+    presentMembers.value = []
     stopTimer()
+    stopPreDraftTimer()
   }
 
   return {
@@ -383,6 +502,7 @@ export const useDraftStore = defineStore('draft', () => {
     loading,
     error,
     timerSeconds,
+    isInCountdown,
     isMyTurn,
     myMembershipId,
     myPicks,
@@ -399,13 +519,17 @@ export const useDraftStore = defineStore('draft', () => {
     currentDrafter,
     upcomingDrafters,
     pickFeed,
+    autoDraftMembers,
+    amInAutoDraft,
+    presentMembers,
+    preDraftSeconds,
     wouldBustAggregate,
     calcNewAggregate,
     probToAmerican,
     loadDraft,
     loadPool,
     submitPick,
-    startDraft,
+    disableAutoDraft,
     subscribeToDraftChannel,
     unsubscribe,
     $reset,

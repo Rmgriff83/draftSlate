@@ -7,10 +7,13 @@ use App\Models\LeagueMembership;
 use App\Models\Matchup;
 use App\Models\PickSelection;
 use App\Models\SlatePick;
+use App\Services\PlayoffBracketService;
 use Illuminate\Support\Collection;
 
 class ScoringService
 {
+    public function __construct(private OddsMathService $oddsMath) {}
+
     /**
      * Grade a pick using its description + result_data (scores/stats from OddsRefreshJob).
      */
@@ -130,6 +133,12 @@ class ScoringService
 
     private function gradePlayerProp(PickSelection $pick, array $rd, bool $gameComplete): ?string
     {
+        // Void if player was scratched (inactive) — distinct from DNP (coach's decision)
+        $reason = $rd['player_stats']['not_playing_reason'] ?? null;
+        if ($reason !== null && str_starts_with(strtoupper($reason), 'INACTIVE')) {
+            return 'void';
+        }
+
         // Use current_stat from result_data (populated by OddsRefreshJob via SportsDataService)
         $actual = $rd['current_stat'] ?? null;
 
@@ -150,12 +159,17 @@ class ScoringService
         $direction = strtolower($m[1]);
         $line = (float) $m[2];
 
-        // "Over" bets: stats only go up, so clearing the line is a definitive HIT
+        // Stats only go up, so some outcomes are definitive mid-game:
+        // - Over clearing the line is a definitive HIT
+        // - Under exceeding the line is a definitive MISS
         if ($direction === 'over' && $actual > $line) {
             return 'hit';
         }
+        if ($direction === 'under' && $actual > $line) {
+            return 'miss';
+        }
 
-        // Can only determine miss/push/under-hit at game completion
+        // Remaining cases (under still alive, over not yet cleared) need game completion
         if (!$gameComplete) {
             return null;
         }
@@ -172,8 +186,26 @@ class ScoringService
         $homeScore = $this->countHits($matchup->homeTeam, $matchup->league_id, $matchup->week);
         $awayScore = $this->countHits($matchup->awayTeam, $matchup->league_id, $matchup->week);
 
+        // Overall Odds bonus: +1 to the team with lower aggregate implied probability (riskier)
+        $homeProb = $this->getStarterAggregateProb($matchup->home_team_id, $matchup->week);
+        $awayProb = $this->getStarterAggregateProb($matchup->away_team_id, $matchup->week);
+
+        if ($homeProb !== null && $awayProb !== null && abs($homeProb - $awayProb) > 0.0001) {
+            if ($homeProb < $awayProb) {
+                $homeScore++;
+            } else {
+                $awayScore++;
+            }
+        }
+
         $isTie = $homeScore === $awayScore;
         $winnerId = $isTie ? null : ($homeScore > $awayScore ? $matchup->home_team_id : $matchup->away_team_id);
+
+        // Playoff tie resolution: higher seed wins
+        if ($isTie && $matchup->is_playoff) {
+            $winnerId = PlayoffBracketService::resolvePlayoffTie($matchup);
+            $isTie = false;
+        }
 
         $matchup->update([
             'home_score' => $homeScore,
@@ -182,6 +214,32 @@ class ScoringService
             'is_tie' => $isTie,
             'status' => 'completed',
         ]);
+    }
+
+    /**
+     * Get the average implied probability of a team's locked starters for a given week.
+     * Returns null if any starter is not locked (bonus not applicable yet).
+     */
+    public function getStarterAggregateProb(int $membershipId, int $week): ?float
+    {
+        $starters = SlatePick::where('league_membership_id', $membershipId)
+            ->where('week', $week)
+            ->where('position', 'starter')
+            ->get();
+
+        if ($starters->isEmpty()) {
+            return null;
+        }
+
+        $lockedOddsList = [];
+        foreach ($starters as $pick) {
+            if (!$pick->is_locked || $pick->locked_odds === null) {
+                return null; // Not all starters locked — bonus not applicable
+            }
+            $lockedOddsList[] = $pick->locked_odds;
+        }
+
+        return $this->oddsMath->calculateAggregateImpliedProbability($lockedOddsList);
     }
 
     private function countHits(LeagueMembership $membership, int $leagueId, int $week): int
@@ -197,40 +255,48 @@ class ScoringService
 
     public function updateStandings(League $league, int $week): void
     {
-        $matchups = Matchup::where('league_id', $league->id)
-            ->where('week', $week)
-            ->where('status', 'completed')
-            ->get();
+        $members = $league->memberships()->where('is_active', true)->get();
 
-        foreach ($matchups as $matchup) {
-            if ($matchup->is_tie) {
-                LeagueMembership::where('id', $matchup->home_team_id)
-                    ->increment('ties');
-                LeagueMembership::where('id', $matchup->away_team_id)
-                    ->increment('ties');
-            } else {
-                $loserId = $matchup->winner_id === $matchup->home_team_id
-                    ? $matchup->away_team_id
-                    : $matchup->home_team_id;
+        foreach ($members as $member) {
+            $matchups = Matchup::where('league_id', $league->id)
+                ->where('status', 'completed')
+                ->where('is_playoff', false)
+                ->where(function ($q) use ($member) {
+                    $q->where('home_team_id', $member->id)
+                        ->orWhere('away_team_id', $member->id);
+                })
+                ->get();
 
-                LeagueMembership::where('id', $matchup->winner_id)->increment('wins');
-                LeagueMembership::where('id', $loserId)->increment('losses');
+            $wins = 0;
+            $losses = 0;
+            $ties = 0;
+            $totalCorrect = 0;
+            $totalOppCorrect = 0;
+
+            foreach ($matchups as $matchup) {
+                $isHome = $matchup->home_team_id === $member->id;
+
+                if ($matchup->is_tie) {
+                    $ties++;
+                } elseif ($matchup->winner_id === $member->id) {
+                    $wins++;
+                } else {
+                    $losses++;
+                }
+
+                $myScore = $isHome ? ($matchup->home_score ?? 0) : ($matchup->away_score ?? 0);
+                $oppScore = $isHome ? ($matchup->away_score ?? 0) : ($matchup->home_score ?? 0);
+                $totalCorrect += $myScore;
+                $totalOppCorrect += $oppScore;
             }
 
-            // Update correct picks totals
-            $homeHits = $matchup->home_score ?? 0;
-            $awayHits = $matchup->away_score ?? 0;
-
-            LeagueMembership::where('id', $matchup->home_team_id)
-                ->increment('total_correct_picks', $homeHits);
-            LeagueMembership::where('id', $matchup->away_team_id)
-                ->increment('total_correct_picks', $awayHits);
-
-            // Track opponent correct picks for tiebreaker
-            LeagueMembership::where('id', $matchup->home_team_id)
-                ->increment('total_opponent_correct_picks', $awayHits);
-            LeagueMembership::where('id', $matchup->away_team_id)
-                ->increment('total_opponent_correct_picks', $homeHits);
+            $member->update([
+                'wins' => $wins,
+                'losses' => $losses,
+                'ties' => $ties,
+                'total_correct_picks' => $totalCorrect,
+                'total_opponent_correct_picks' => $totalOppCorrect,
+            ]);
         }
     }
 

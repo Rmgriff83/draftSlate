@@ -20,7 +20,10 @@ class DraftState extends Model
         'current_pick_started_at',
         'total_rounds',
         'started_at',
+        'draft_starts_at',
         'completed_at',
+        'auto_draft_members',
+        'consecutive_auto_picks',
     ];
 
     protected function casts(): array
@@ -34,8 +37,21 @@ class DraftState extends Model
             'total_rounds' => 'integer',
             'current_pick_started_at' => 'datetime',
             'started_at' => 'datetime',
+            'draft_starts_at' => 'datetime',
             'completed_at' => 'datetime',
+            'auto_draft_members' => 'array',
+            'consecutive_auto_picks' => 'array',
         ];
+    }
+
+    public function isInAutoDraft(int $membershipId): bool
+    {
+        return in_array($membershipId, $this->auto_draft_members ?? []);
+    }
+
+    public function getConsecutiveAutoPickCount(int $membershipId): int
+    {
+        return ($this->consecutive_auto_picks ?? [])[$membershipId] ?? 0;
     }
 
     public function league(): BelongsTo

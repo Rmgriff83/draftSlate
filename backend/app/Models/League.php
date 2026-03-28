@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use App\Models\DraftState;
 
 class League extends Model
 {
@@ -67,6 +68,40 @@ class League extends Model
         ];
     }
 
+    public function getPlayoffWeekCount(): int
+    {
+        return match ($this->playoff_format) {
+            'A', 'B' => 2,
+            'C', 'D' => 3,
+            default => 0,
+        };
+    }
+
+    public function getPlayoffStartWeek(): int
+    {
+        return ($this->total_matchups ?? 14) + 1;
+    }
+
+    public function getTotalWeeksIncludingPlayoffs(): int
+    {
+        return ($this->total_matchups ?? 14) + $this->getPlayoffWeekCount();
+    }
+
+    public function getPlayoffTeamCount(): int
+    {
+        return match ($this->playoff_format) {
+            'A', 'B' => 4,
+            'C' => 6,
+            'D' => $this->memberships()->where('is_active', true)->count(),
+            default => 0,
+        };
+    }
+
+    public function isInPlayoffs(): bool
+    {
+        return $this->state === 'playoffs';
+    }
+
     public function getStarterSlotsCount(): int
     {
         return array_sum($this->roster_config ?? []);
@@ -114,9 +149,38 @@ class League extends Model
         $now = Carbon::now($tz);
         $timeParts = explode(':', $this->draft_time ?? '20:00:00');
 
-        for ($n = 1; $n <= $this->total_matchups; $n++) {
-            $draftDate = $this->season_start_date->copy()
-                ->setTimezone($tz)
+        // Parse the season start date string directly in the target timezone
+        // to avoid UTC→TZ offset shifting the date backwards by a day
+        $baseDateStr = $this->season_start_date->format('Y-m-d');
+
+        // Determine the next week needing a draft from actual history
+        // (more robust than current_week which may lag behind)
+        $latestCompletedWeek = DraftState::where('league_id', $this->id)
+            ->where('status', 'completed')
+            ->max('week') ?? 0;
+
+        $nextDraftWeek = $latestCompletedWeek + 1;
+
+        if ($nextDraftWeek <= $this->getTotalWeeksIncludingPlayoffs()) {
+            // Check if this week's draft has already started
+            $draftStarted = DraftState::where('league_id', $this->id)
+                ->where('week', $nextDraftWeek)
+                ->whereIn('status', ['active', 'completed'])
+                ->exists();
+
+            if (!$draftStarted) {
+                // Return this week's draft time even if past —
+                // the frontend will show "Draft is Live!"
+                return Carbon::parse($baseDateStr, $tz)
+                    ->addDays(($nextDraftWeek - 1) * $this->matchup_duration_days)
+                    ->setTime((int) $timeParts[0], (int) $timeParts[1], (int) ($timeParts[2] ?? 0))
+                    ->utc();
+            }
+        }
+
+        // Otherwise find the next future draft time after the latest drafted week
+        for ($n = $nextDraftWeek + 1; $n <= $this->getTotalWeeksIncludingPlayoffs(); $n++) {
+            $draftDate = Carbon::parse($baseDateStr, $tz)
                 ->addDays(($n - 1) * $this->matchup_duration_days)
                 ->setTime((int) $timeParts[0], (int) $timeParts[1], (int) ($timeParts[2] ?? 0));
 

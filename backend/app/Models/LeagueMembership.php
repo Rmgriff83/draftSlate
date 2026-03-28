@@ -14,6 +14,14 @@ class LeagueMembership extends Model
         'team_name',
         'team_logo_url',
         'is_active',
+        'wins',
+        'losses',
+        'ties',
+        'total_correct_picks',
+        'total_opponent_correct_picks',
+        'playoff_seed',
+        'playoff_bracket',
+        'final_position',
     ];
 
     protected function casts(): array

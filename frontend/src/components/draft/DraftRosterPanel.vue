@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
+import PickImage from '@/components/common/PickImage.vue'
 import { useDraftStore } from '@/stores/draft'
 
 const draft = useDraftStore()
@@ -92,12 +93,7 @@ function getBench(slot) {
           {{ entry.label }}
         </span>
         <template v-if="entry.pick">
-          <Icon
-            v-if="sportIcons[entry.pick.sport]"
-            :icon="sportIcons[entry.pick.sport]"
-            class="w-3.5 h-3.5 flex-shrink-0"
-            :class="sportIconColors[entry.pick.sport] || 'text-ds-text-tertiary'"
-          />
+          <PickImage :pick="entry.pick" size="sm" />
           <div class="flex-1 min-w-0">
             <p class="text-xs text-ds-text-primary truncate">{{ entry.pick.description }}</p>
             <p v-if="formatGameTime(entry.pick.game_time)" class="text-[10px] text-ds-text-tertiary truncate">{{ formatGameTime(entry.pick.game_time) }}</p>
@@ -123,12 +119,7 @@ function getBench(slot) {
             >
               {{ typeLabels[getBench(slot).slot_type] || getBench(slot).slot_type }}
             </span>
-            <Icon
-              v-if="sportIcons[getBench(slot).sport]"
-              :icon="sportIcons[getBench(slot).sport]"
-              class="w-3.5 h-3.5 flex-shrink-0"
-              :class="sportIconColors[getBench(slot).sport] || 'text-ds-text-tertiary'"
-            />
+            <PickImage :pick="getBench(slot)" size="sm" />
             <div class="flex-1 min-w-0">
               <p class="text-xs text-ds-text-primary truncate">{{ getBench(slot).description }}</p>
               <p v-if="formatGameTime(getBench(slot).game_time)" class="text-[10px] text-ds-text-tertiary truncate">{{ formatGameTime(getBench(slot).game_time) }}</p>

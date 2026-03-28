@@ -54,6 +54,24 @@ export function useSlateHelpers() {
     return labels[outcome] || 'PENDING'
   }
 
+  function americanToImpliedProb(odds) {
+    if (odds === null || odds === undefined) return 0
+    if (odds < 0) return Math.abs(odds) / (Math.abs(odds) + 100)
+    return 100 / (odds + 100)
+  }
+
+  function aggregateImpliedProb(oddsList) {
+    if (!oddsList || oddsList.length === 0) return 0
+    const total = oddsList.reduce((sum, o) => sum + americanToImpliedProb(o), 0)
+    return total / oddsList.length
+  }
+
+  function impliedProbToAmerican(prob) {
+    if (prob <= 0 || prob >= 1) return -100
+    if (prob >= 0.5) return Math.round(-100 * prob / (1 - prob))
+    return Math.round(100 * (1 - prob) / prob)
+  }
+
   function formatOdds(odds) {
     if (odds === null || odds === undefined) return '--'
     return odds > 0 ? `+${odds}` : `${odds}`
@@ -272,6 +290,9 @@ export function useSlateHelpers() {
     outcomeClasses,
     outcomeBadgeClasses,
     outcomeLabel,
+    americanToImpliedProb,
+    aggregateImpliedProb,
+    impliedProbToAmerican,
     formatOdds,
     oddsColor,
     formatDrift,

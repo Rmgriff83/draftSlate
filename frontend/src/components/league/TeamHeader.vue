@@ -39,7 +39,7 @@ function initials(name) {
         </p>
         <p class="text-xs text-ds-text-tertiary font-mono">
           {{ team?.wins ?? 0 }}-{{ team?.losses ?? 0 }}<span v-if="team?.ties > 0">-{{ team.ties }}</span>
-          <span class="font-sans"> · #{{ team?.rank ?? '—' }} · this week: {{ slate.hitCount }}/{{ slate.starters.length }}</span>
+          <span class="font-sans"> · #{{ team?.rank ?? '—' }} · this matchup: {{ slate.hitCount }}/{{ slate.starters.length }}</span>
         </p>
       </div>
     </div>
@@ -56,7 +56,7 @@ function initials(name) {
         </svg>
       </button>
       <span class="text-sm font-semibold text-ds-text-primary min-w-[72px] text-center">
-        Week {{ selectedWeek }}
+        Matchup {{ selectedWeek }}
       </span>
       <button
         @click="$emit('next-week')"

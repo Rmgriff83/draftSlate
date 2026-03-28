@@ -2,14 +2,15 @@
 
 namespace App\Jobs;
 
+use App\Models\OddsSnapshot;
 use App\Models\PickSelection;
 use App\Services\OddsApiService;
-use App\Services\SportsDataService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class OddsRefreshJob implements ShouldQueue
@@ -26,156 +27,47 @@ class OddsRefreshJob implements ShouldQueue
 
     public function handle(): void
     {
-        // Fetch only picks within actionable time window (live + upcoming 2h)
+        $now = now();
+
+        // Only fetch pre-game picks — live games handled by LiveScoreRefreshJob
         $picks = PickSelection::where('outcome', 'pending')
             ->where('is_drafted', true)
-            ->where('game_time', '>', now()->subHours(6))
-            ->where('game_time', '<=', now()->addHours(2))
+            ->where('game_time', '>', $now)
             ->get();
 
         if ($picks->isEmpty()) {
             return;
         }
 
-        // Partition into live games vs upcoming (pre-game)
-        [$livePicks, $upcomingPicks] = $picks->partition(
-            fn ($pick) => $pick->game_time <= now()
-        );
+        // Partition into close (<= 4h) and far (> 4h) tiers
+        $fourHoursOut = $now->copy()->addHours(4);
+        $closePicks = $picks->filter(fn ($p) => $p->game_time->lte($fourHoursOut));
+        $farPicks = $picks->filter(fn ($p) => $p->game_time->gt($fourHoursOut));
+
+        // Far picks only process on 6-hour heartbeat
+        $heartbeatDue = !Cache::has('odds_refresh.heartbeat');
+        if ($heartbeatDue && $farPicks->isNotEmpty()) {
+            Cache::put('odds_refresh.heartbeat', true, now()->addHours(6));
+        }
+
+        $picksToProcess = $closePicks;
+        if ($heartbeatDue) {
+            $picksToProcess = $picksToProcess->merge($farPicks);
+        }
+
+        if ($picksToProcess->isEmpty()) {
+            Log::info('OddsRefreshJob: no picks to process this run (far picks waiting for heartbeat)');
+            return;
+        }
 
         $oddsApi = app(OddsApiService::class);
-        $sportsData = app(SportsDataService::class);
         $totalRefreshed = 0;
-        $totalScores = 0;
-        $totalStats = 0;
-        $totalSkipped = 0;
+        $totalSnapshots = 0;
+        $capturedAt = $now;
 
-        // Track completed event IDs so we skip redundant odds/stats fetches
-        $completedEventIds = [];
+        $grouped = $picksToProcess->groupBy('sport');
 
-        // --- Process LIVE picks: scores + odds + player stats ---
-        $liveGrouped = $livePicks->groupBy('sport');
-
-        // Pre-fetch box scores for NBA if we have live NBA picks
-        $nbaBoxScores = [];
-        if ($liveGrouped->has('basketball_nba')) {
-            $nbaBoxScores = $sportsData->fetchNbaBoxScores();
-        }
-
-        foreach ($liveGrouped as $sport => $sportPicks) {
-            $eventIds = $sportPicks->pluck('external_id')
-                ->map(fn ($id) => explode('_', $id)[0])
-                ->unique()
-                ->values()
-                ->toArray();
-
-            if (empty($eventIds)) {
-                continue;
-            }
-
-            // Fetch scores first so we can detect completed games
-            $scores = $oddsApi->fetchScores($sport);
-
-            // Identify completed events
-            foreach ($scores as $eventId => $scoreData) {
-                if (!empty($scoreData['completed']) && $scoreData['home_score'] !== null) {
-                    $completedEventIds[] = $eventId;
-                }
-            }
-
-            // Only fetch odds for non-completed events
-            $activeEventIds = array_diff($eventIds, $completedEventIds);
-            $oddsMap = [];
-            $pointsMap = [];
-
-            if (!empty($activeEventIds)) {
-                $result = $oddsApi->fetchCurrentOddsMap($activeEventIds, $sport);
-                $oddsMap = $result['odds'];
-                $pointsMap = $result['points'];
-            }
-
-            foreach ($sportPicks as $pick) {
-                $eventId = explode('_', $pick->external_id)[0];
-                $isCompleted = in_array($eventId, $completedEventIds);
-
-                // --- Refresh odds (skip completed games) ---
-                if (!$isCompleted && isset($oddsMap[$pick->external_id])) {
-                    if ($pick->pick_type === 'player_prop') {
-                        $apiPoint = $pointsMap[$pick->external_id] ?? null;
-                        $originalPoint = $this->extractPointFromDescription($pick->description);
-
-                        if ($apiPoint !== null && $originalPoint !== null && abs($apiPoint - $originalPoint) > 0.01) {
-                            goto updateScores;
-                        }
-                    }
-
-                    $pick->update([
-                        'current_odds' => $oddsMap[$pick->external_id],
-                        'odds_updated_at' => now(),
-                    ]);
-                    $totalRefreshed++;
-                } elseif ($isCompleted) {
-                    $totalSkipped++;
-                }
-
-                updateScores:
-                $existing = $pick->result_data ?? [];
-
-                // Game scores from Odds API
-                if (isset($scores[$eventId])) {
-                    $scoreData = $scores[$eventId];
-                    $existing = array_merge($existing, [
-                        'home_team' => $scoreData['home_team'],
-                        'away_team' => $scoreData['away_team'],
-                        'home_score' => $scoreData['home_score'],
-                        'away_score' => $scoreData['away_score'],
-                        'completed' => $scoreData['completed'],
-                        'last_update' => $scoreData['last_update'],
-                    ]);
-                    $totalScores++;
-                }
-
-                // Player stats for props (NBA) — skip if game completed
-                if (!$isCompleted && $sport === 'basketball_nba' && $pick->pick_type === 'player_prop' && !empty($nbaBoxScores)) {
-                    $playerStats = $sportsData->findPlayerStats(
-                        $nbaBoxScores,
-                        $pick->player_name ?? '',
-                        $pick->home_team ?? '',
-                        $pick->away_team ?? ''
-                    );
-
-                    if ($playerStats) {
-                        $existing['player_stats'] = [
-                            'points' => $playerStats['points'],
-                            'rebounds' => $playerStats['rebounds'],
-                            'assists' => $playerStats['assists'],
-                            'threes' => $playerStats['threes'],
-                            'minutes' => $playerStats['minutes'],
-                        ];
-                        $existing['period'] = $playerStats['period'];
-                        $existing['game_status'] = $playerStats['status'];
-
-                        $statKey = $sportsData->categoryToStatKey($pick->category);
-                        if ($statKey && isset($playerStats[$statKey])) {
-                            $existing['current_stat'] = $playerStats[$statKey];
-                            $existing['stat_label'] = $statKey;
-                        }
-                        $totalStats++;
-                    }
-                }
-
-                if (!empty($existing)) {
-                    $pick->refresh();
-                    if ($pick->outcome === 'pending') {
-                        $pick->update(['result_data' => $existing]);
-                    }
-                }
-            }
-        }
-
-        // --- Process UPCOMING picks: odds only (no scores, no stats) ---
-        $upcomingGrouped = $upcomingPicks->groupBy('sport');
-
-        foreach ($upcomingGrouped as $sport => $sportPicks) {
+        foreach ($grouped as $sport => $sportPicks) {
             $eventIds = $sportPicks->pluck('external_id')
                 ->map(fn ($id) => explode('_', $id)[0])
                 ->unique()
@@ -195,6 +87,9 @@ class OddsRefreshJob implements ShouldQueue
                     continue;
                 }
 
+                $newOdds = $oddsMap[$pick->external_id];
+
+                // Skip player props if the bookmaker has shifted the line
                 if ($pick->pick_type === 'player_prop') {
                     $apiPoint = $pointsMap[$pick->external_id] ?? null;
                     $originalPoint = $this->extractPointFromDescription($pick->description);
@@ -204,15 +99,36 @@ class OddsRefreshJob implements ShouldQueue
                     }
                 }
 
+                // Update current odds on the pick
                 $pick->update([
-                    'current_odds' => $oddsMap[$pick->external_id],
+                    'current_odds' => $newOdds,
                     'odds_updated_at' => now(),
                 ]);
                 $totalRefreshed++;
+
+                // Capture odds snapshot for drift charts (replaces OddsHistoryJob)
+                $lineValue = $pointsMap[$pick->external_id] ?? null;
+                if ($pick->pick_type === 'moneyline') {
+                    $lineValue = null;
+                }
+
+                $exists = OddsSnapshot::where('pick_selection_id', $pick->id)
+                    ->where('captured_at', $capturedAt)
+                    ->exists();
+
+                if (!$exists) {
+                    OddsSnapshot::create([
+                        'pick_selection_id' => $pick->id,
+                        'odds' => $newOdds,
+                        'line' => $lineValue !== null ? (float) $lineValue : null,
+                        'captured_at' => $capturedAt,
+                    ]);
+                    $totalSnapshots++;
+                }
             }
         }
 
-        Log::info("OddsRefreshJob: odds={$totalRefreshed}, scores={$totalScores}, player_stats={$totalStats}, skipped_completed={$totalSkipped}");
+        Log::info("OddsRefreshJob: odds_refreshed={$totalRefreshed}, snapshots={$totalSnapshots}, heartbeat=" . ($heartbeatDue ? 'yes' : 'no'));
     }
 
     private function extractPointFromDescription(string $description): ?float

@@ -66,6 +66,9 @@ class ResultGradingJob implements ShouldQueue
             // Find affected league+week combos for matchup scoring
             $slatePicks = SlatePick::where('pick_selection_id', $pick->id)->get();
 
+            // Track users already credited for this pick (one credit per user per pick)
+            $creditedUserIds = [];
+
             foreach ($slatePicks as $slatePick) {
                 $membership = $slatePick->membership;
 
@@ -77,6 +80,21 @@ class ResultGradingJob implements ShouldQueue
                     ];
 
                     event(new PickGraded($membership->league_id, $pick->id, $pick->outcome, $pick->description));
+
+                    // Career stats — one credit per user per pick selection
+                    $userId = $membership->user_id;
+                    if (!in_array($userId, $creditedUserIds)) {
+                        $creditedUserIds[] = $userId;
+                        $user = $membership->user;
+
+                        if ($user && $pick->outcome !== 'void') {
+                            if ($pick->outcome === 'hit') {
+                                $user->recordCareerHit($pick->pick_type);
+                            } else {
+                                $user->recordCareerGraded();
+                            }
+                        }
+                    }
                 }
             }
         }

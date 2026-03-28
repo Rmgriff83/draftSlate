@@ -379,6 +379,72 @@ class OddsApiService
     }
 
     /**
+     * Fetch live game scores with a shorter cache TTL (60s) for in-progress games.
+     *
+     * @return array<string, array>  [eventId => ['home_score' => int, 'away_score' => int, ...]]
+     */
+    public function fetchScoresLive(string $sport): array
+    {
+        $cacheKey = "odds_api.scores_live.{$sport}";
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            Log::info("OddsApiService: Redis HIT for {$cacheKey}");
+            return $cached;
+        }
+
+        try {
+            $response = Http::timeout(15)->get("{$this->baseUrl}/sports/{$sport}/scores", [
+                'apiKey' => $this->apiKey,
+                'daysFrom' => 3,
+            ]);
+
+            if (!$response->successful()) {
+                Log::warning("OddsApiService: HTTP {$response->status()} for scores_live {$sport}");
+                return [];
+            }
+
+            $rawScores = $response->json() ?: [];
+        } catch (\Exception $e) {
+            Log::error("OddsApiService: Exception for scores_live {$sport}", ['error' => $e->getMessage()]);
+            return [];
+        }
+
+        $results = [];
+        foreach ($rawScores as $event) {
+            $eventId = $event['id'] ?? '';
+            if (empty($eventId) || empty($event['scores'])) {
+                continue;
+            }
+
+            $homeTeam = $event['home_team'] ?? '';
+            $awayTeam = $event['away_team'] ?? '';
+            $homeScore = null;
+            $awayScore = null;
+
+            foreach ($event['scores'] as $s) {
+                if ($s['name'] === $homeTeam) {
+                    $homeScore = (int) $s['score'];
+                } elseif ($s['name'] === $awayTeam) {
+                    $awayScore = (int) $s['score'];
+                }
+            }
+
+            $results[$eventId] = [
+                'home_team' => $homeTeam,
+                'away_team' => $awayTeam,
+                'home_score' => $homeScore,
+                'away_score' => $awayScore,
+                'completed' => $event['completed'] ?? false,
+                'last_update' => $event['last_update'] ?? null,
+            ];
+        }
+
+        Cache::put($cacheKey, $results, 60);
+
+        return $results;
+    }
+
+    /**
      * Check remaining API quota from response headers.
      * Manual cache — reads header, not JSON body, so can't use cachedGet.
      */

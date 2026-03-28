@@ -54,14 +54,9 @@ class MatchupScoreJob implements ShouldQueue
             ));
         }
 
-        // Check if all matchups for the week are completed
-        $remainingMatchups = Matchup::where('league_id', $this->leagueId)
-            ->where('week', $this->week)
-            ->where('status', '!=', 'completed')
-            ->count();
-
-        if ($remainingMatchups === 0 && $completedCount > 0) {
-            StandingsUpdateJob::dispatch($this->leagueId);
+        // Update standings after any matchup completes (idempotent recompute)
+        if ($completedCount > 0) {
+            StandingsUpdateJob::dispatch($this->leagueId, $this->week);
         }
 
         if ($completedCount > 0) {

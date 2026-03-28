@@ -2,14 +2,20 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/utils/api'
 import echo from '@/utils/echo'
+import { useSlateHelpers } from '@/composables/useSlateHelpers'
+import { useAuthStore } from '@/stores/auth'
 
 export const useSlateStore = defineStore('slate', () => {
+  const { aggregateImpliedProb } = useSlateHelpers()
+
   const myPicks = ref([])
   const myMatchup = ref(null)
   const standings = ref([])
   const currentWeek = ref(1)
   const loading = ref(false)
   const error = ref('')
+  const bracketData = ref(null)
+  const payoutData = ref(null)
   let channel = null
 
   const starters = computed(() =>
@@ -42,13 +48,42 @@ export const useSlateStore = defineStore('slate', () => {
   const myScore = computed(() => {
     if (!myMatchup.value) return 0
     const picks = (myMatchup.value.my_picks || []).filter(p => p.position === 'starter')
-    return picks.filter(p => p.pick_selection?.outcome === 'hit').length
+    let score = picks.filter(p => p.pick_selection?.outcome === 'hit').length
+    score += oddsBonus.value.my
+    return score
   })
 
   const opponentScore = computed(() => {
     if (!myMatchup.value) return 0
     const picks = (myMatchup.value.opponent_picks || []).filter(p => p.position === 'starter')
-    return picks.filter(p => p.pick_selection?.outcome === 'hit').length
+    let score = picks.filter(p => p.pick_selection?.outcome === 'hit').length
+    score += oddsBonus.value.opponent
+    return score
+  })
+
+  const oddsBonus = computed(() => {
+    if (!myMatchup.value) return { my: 0, opponent: 0 }
+
+    const myStarters = (myMatchup.value.my_picks || []).filter(p => p.position === 'starter')
+    const oppStarters = (myMatchup.value.opponent_picks || []).filter(p => p.position === 'starter')
+
+    // All starters on BOTH sides must be locked
+    const allMyLocked = myStarters.length > 0 && myStarters.every(p => p.is_locked)
+    const allOppLocked = oppStarters.length > 0 && oppStarters.every(p => p.is_locked)
+
+    if (!allMyLocked || !allOppLocked) return { my: 0, opponent: 0 }
+
+    const myOdds = myStarters.map(p => p.locked_odds).filter(o => o != null)
+    const oppOdds = oppStarters.map(p => p.locked_odds).filter(o => o != null)
+
+    if (myOdds.length === 0 || oppOdds.length === 0) return { my: 0, opponent: 0 }
+
+    const myProb = aggregateImpliedProb(myOdds)
+    const oppProb = aggregateImpliedProb(oppOdds)
+
+    // Lower probability = riskier = wins the point
+    if (Math.abs(myProb - oppProb) < 0.0001) return { my: 0, opponent: 0 }
+    return myProb < oppProb ? { my: 1, opponent: 0 } : { my: 0, opponent: 1 }
   })
 
   async function fetchSummary(leagueId, week) {
@@ -93,11 +128,29 @@ export const useSlateStore = defineStore('slate', () => {
         target_slot: targetSlot,
         target_slot_type: targetSlotType || null,
       })
-      await fetchSlate(leagueId, currentWeek.value)
+      await fetchSummary(leagueId, currentWeek.value)
       return { success: true }
     } catch (err) {
       error.value = err.response?.data?.message || 'Swap failed'
       return { success: false, message: error.value }
+    }
+  }
+
+  async function fetchBracket(leagueId) {
+    try {
+      const res = await api.get(`/api/v1/leagues/${leagueId}/playoffs/bracket`)
+      bracketData.value = res.data.data
+    } catch {
+      // silent
+    }
+  }
+
+  async function fetchPayouts(leagueId) {
+    try {
+      const res = await api.get(`/api/v1/leagues/${leagueId}/playoffs/payouts`)
+      payoutData.value = res.data.data
+    } catch {
+      // silent
     }
   }
 
@@ -125,6 +178,17 @@ export const useSlateStore = defineStore('slate', () => {
           pick.pick_selection.outcome = e.outcome
         }
       })
+      .listen('.ScoresUpdated', (e) => {
+        // Merge live score data into local picks
+        for (const update of e.picks || []) {
+          const pick = myPicks.value.find(
+            (p) => p.pick_selection?.id === update.pick_selection_id
+          )
+          if (pick && pick.pick_selection) {
+            pick.pick_selection.result_data = update.result_data
+          }
+        }
+      })
       .listen('.MatchupScored', (e) => {
         if (myMatchup.value && myMatchup.value.id === e.matchup_id) {
           myMatchup.value.home_score = e.scores.home
@@ -134,7 +198,11 @@ export const useSlateStore = defineStore('slate', () => {
         }
       })
       .listen('.StandingsUpdated', (e) => {
-        standings.value = e.standings || []
+        const auth = useAuthStore()
+        standings.value = (e.standings || []).map(s => ({
+          ...s,
+          is_current_user: s.user_id === auth.user?.id,
+        }))
       })
   }
 
@@ -152,6 +220,8 @@ export const useSlateStore = defineStore('slate', () => {
     currentWeek.value = 1
     loading.value = false
     error.value = ''
+    bracketData.value = null
+    payoutData.value = null
   }
 
   return {
@@ -161,6 +231,8 @@ export const useSlateStore = defineStore('slate', () => {
     currentWeek,
     loading,
     error,
+    bracketData,
+    payoutData,
     starters,
     bench,
     lockedCount,
@@ -169,8 +241,11 @@ export const useSlateStore = defineStore('slate', () => {
     statusLine,
     myScore,
     opponentScore,
+    oddsBonus,
     fetchSummary,
     fetchSlate,
+    fetchBracket,
+    fetchPayouts,
     swapPick,
     refreshOdds,
     subscribeToLeagueChannel,

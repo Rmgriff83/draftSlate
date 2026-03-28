@@ -6,23 +6,14 @@ use App\Models\DraftState;
 use App\Models\League;
 use App\Models\PickSelection;
 use App\Models\SlatePick;
-use App\Models\SlatePool;
-use App\Exceptions\InsufficientPicksException;
 use App\Services\DraftService;
-use App\Services\OddsApiService;
-use App\Services\OddsMathService;
-use App\Services\PoolCurationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 
 class DraftController extends Controller
 {
     public function __construct(
         private DraftService $draftService,
-        private OddsApiService $oddsApi,
-        private OddsMathService $oddsMath,
-        private PoolCurationService $curationService,
     ) {}
 
     /**
@@ -41,15 +32,18 @@ class DraftController extends Controller
             ->latest('week')
             ->first();
 
-        // No draft yet — return lobby state so the frontend shows the waiting room
-        if (!$draft) {
+        // Show lobby when no draft exists, or when the latest draft is completed
+        // and the league has advanced to the next week (ready for a new draft)
+        if (!$draft || ($draft->status === 'completed' && $draft->week < $league->current_week)) {
             return response()->json([
                 'data' => [
                     'league_id' => $league->id,
                     'status' => 'lobby',
                     'pick_timer_seconds' => $league->pick_timer_seconds,
                     'roster_config' => $league->roster_config,
+                    'bench_slots' => $league->getBenchSlotsCount(),
                     'aggregate_odds_floor' => $league->aggregate_odds_floor,
+                    'matchup_duration_days' => $league->matchup_duration_days,
                     'my_membership_id' => $membership->id,
                     'is_my_turn' => false,
                     'members' => $members->map(fn ($m) => [
@@ -57,6 +51,7 @@ class DraftController extends Controller
                         'team_name' => $m->team_name,
                         'user_name' => $m->user->display_name,
                         'user_id' => $m->user->id,
+                        'avatar_url' => $m->user->avatar_url,
                     ]),
                     'picks' => [],
                 ],
@@ -84,16 +79,22 @@ class DraftController extends Controller
                 'total_rounds' => $draft->total_rounds,
                 'pick_timer_seconds' => $league->pick_timer_seconds,
                 'roster_config' => $league->roster_config,
+                'bench_slots' => $league->getBenchSlotsCount(),
                 'aggregate_odds_floor' => $league->aggregate_odds_floor,
+                'matchup_duration_days' => $league->matchup_duration_days,
                 'started_at' => $draft->started_at?->toISOString(),
+                'draft_starts_at' => $draft->draft_starts_at?->toISOString(),
                 'completed_at' => $draft->completed_at?->toISOString(),
                 'my_membership_id' => $membership->id,
-                'is_my_turn' => $draft->current_drafter_id === $membership->id,
+                'picks_started' => $draft->current_pick_started_at !== null,
+                'is_my_turn' => $draft->current_drafter_id === $membership->id && $draft->current_pick_started_at !== null,
+                'auto_draft_members' => $draft->auto_draft_members ?? [],
                 'members' => $members->map(fn ($m) => [
                     'id' => $m->id,
                     'team_name' => $m->team_name,
                     'user_name' => $m->user->display_name,
                     'user_id' => $m->user->id,
+                    'avatar_url' => $m->user->avatar_url,
                 ]),
                 'picks' => $allPicks->map(fn ($p) => [
                     'id' => $p->id,
@@ -102,6 +103,9 @@ class DraftController extends Controller
                     'description' => $p->pickSelection->description,
                     'pick_type' => $p->pickSelection->pick_type,
                     'sport' => $p->pickSelection->sport,
+                    'player_name' => $p->pickSelection->player_name,
+                    'home_team' => $p->pickSelection->home_team,
+                    'away_team' => $p->pickSelection->away_team,
                     'game_display' => $p->pickSelection->game_display,
                     'game_time' => $p->pickSelection->game_time?->toISOString(),
                     'snapshot_odds' => $p->pickSelection->snapshot_odds,
@@ -251,141 +255,31 @@ class DraftController extends Controller
     }
 
     /**
-     * POST /leagues/{league}/draft/start — commissioner starts the draft.
+     * POST /leagues/{league}/draft/autodraft/disable — turn off autodraft for the current user.
      */
-    public function start(Request $request, League $league): JsonResponse
+    public function disableAutoDraft(Request $request, League $league): JsonResponse
     {
-        if ($league->commissioner_id !== $request->user()->id) {
-            return response()->json(['message' => 'Only the commissioner can start the draft.'], 403);
+        $membership = $league->memberships()->where('user_id', $request->user()->id)->first();
+        if (!$membership) {
+            return response()->json(['message' => 'You are not a member of this league.'], 403);
         }
 
-        if ($league->state !== 'pending') {
-            // Allow starting draft from pending state
-        }
-
-        $slatePool = SlatePool::where('league_id', $league->id)
-            ->where('status', 'ready')
+        $draft = DraftState::where('league_id', $league->id)
+            ->where('status', 'active')
             ->latest('week')
             ->first();
 
-        // Check if existing pool actually has picks
-        if ($slatePool && PickSelection::where('slate_pool_id', $slatePool->id)->count() === 0) {
-            $slatePool = null; // Treat empty pool as non-existent
+        if (!$draft) {
+            return response()->json(['message' => 'No active draft.'], 404);
         }
 
-        if (!$slatePool) {
-            // Reuse a stale "building" pool from a prior failed attempt, or create new
-            $slatePool = SlatePool::where('league_id', $league->id)
-                ->where('status', 'building')
-                ->latest('week')
-                ->first();
-
-            if ($slatePool) {
-                // Clean out any partial picks from the failed attempt
-                PickSelection::where('slate_pool_id', $slatePool->id)->delete();
-                $slatePool->update(['snapshot_at' => now()]);
-            } else {
-                $slatePool = SlatePool::create([
-                    'league_id' => $league->id,
-                    'week' => 1,
-                    'snapshot_at' => now(),
-                    'status' => 'building',
-                ]);
-            }
-
-            // Fetch picks from all selected sports
-            $allPicks = $this->oddsApi->fetchForSports($league->sports ?? ['basketball_nba']);
-
-            // Filter by matchup window — only include games that start after the
-            // min-hours cutoff AND before the matchup duration window ends.
-            $cutoffTime = now()->addHours($league->min_hours_before_game);
-            $windowEnd = now()->addDays($league->matchup_duration_days);
-
-            $filteredPicks = array_filter($allPicks, function ($pick) use ($cutoffTime, $windowEnd) {
-                if (!empty($pick['game_time'])) {
-                    $gameTime = Carbon::parse($pick['game_time']);
-                    if ($gameTime->lte($cutoffTime) || $gameTime->gt($windowEnd)) {
-                        return false;
-                    }
-                }
-                return true;
-            });
-
-            // Deduplicate by external_id
-            $uniquePicks = [];
-            foreach ($filteredPicks as $pick) {
-                $uniquePicks[$pick['external_id']] = $pick;
-            }
-
-            if (empty($uniquePicks)) {
-                return response()->json([
-                    'message' => 'No picks available from the Odds API. This likely means the selected sports are in their offseason or no upcoming games were found.',
-                ], 422);
-            }
-
-            // Curate a scarce, balanced pool
-            $memberCount = $league->memberships()->count();
-
-            try {
-                $curation = $this->curationService->curate(array_values($uniquePicks), $league, $memberCount);
-            } catch (InsufficientPicksException $e) {
-                return response()->json([
-                    'message' => $e->getMessage(),
-                    'context' => $e->context,
-                ], 422);
-            }
-
-            // Insert curated pick selections
-            $insertData = [];
-            foreach ($curation['picks'] as $pick) {
-                $pick['game_time'] = Carbon::parse($pick['game_time']);
-                $insertData[] = array_merge($pick, [
-                    'slate_pool_id' => $slatePool->id,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
-
-            if (!empty($insertData)) {
-                foreach (array_chunk($insertData, 100) as $chunk) {
-                    PickSelection::insert($chunk);
-                }
-            }
-
-            $slatePool->update([
-                'status' => 'ready',
-                'api_metadata' => [
-                    'manual_start' => true,
-                    'sports' => $league->sports,
-                    'total_raw_picks' => count($allPicks),
-                    'filtered_picks' => count($filteredPicks),
-                    'curated_picks' => count($insertData),
-                    'curation' => $curation['metadata'],
-                    'built_at' => now()->toISOString(),
-                ],
-            ]);
+        if (!$draft->isInAutoDraft($membership->id)) {
+            return response()->json(['message' => 'Autodraft is not enabled for you.'], 422);
         }
 
-        // Transition league to active, auto-set season_start_date if not set
-        $updateData = [
-            'state' => 'active',
-            'current_week' => $slatePool->week ?: 1,
-        ];
+        $this->draftService->disableAutoDraft($draft, $membership);
 
-        if (!$league->season_start_date) {
-            $updateData['season_start_date'] = now()->tz($league->draft_timezone)->toDateString();
-        }
-
-        $league->update($updateData);
-
-        $draft = $this->draftService->initializeDraft($league, $slatePool);
-
-        return response()->json([
-            'data' => [
-                'draft_id' => $draft->id,
-                'status' => $draft->status,
-                'message' => 'Draft started!',
-            ],
-        ]);
+        return response()->json(['message' => 'Autodraft disabled.']);
     }
+
 }

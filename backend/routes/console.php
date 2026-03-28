@@ -1,7 +1,7 @@
 <?php
 
 use App\Jobs\CheckAndDispatchSlatePoolBuilds;
-use App\Jobs\OddsHistoryJob;
+use App\Jobs\LiveScoreRefreshJob;
 use App\Jobs\OddsRefreshJob;
 use App\Jobs\ResultGradingJob;
 use App\Jobs\SlateLockJob;
@@ -22,8 +22,9 @@ Schedule::job(new SlateLockJob)->everyFiveMinutes();
 // Grade picks with result data (every 5 minutes)
 Schedule::job(new ResultGradingJob)->everyFiveMinutes();
 
-// Refresh odds for upcoming games (every 15 minutes)
-Schedule::job(new OddsRefreshJob)->everyFifteenMinutes();
+// Refresh live scores for in-progress games (every 2 minutes)
+Schedule::job(new LiveScoreRefreshJob)->everyTwoMinutes();
 
-// Capture historical odds snapshots for line movement charts (every 30 minutes)
-Schedule::job(new OddsHistoryJob)->everyThirtyMinutes();
+// Refresh odds for upcoming games with tiered cadence (every 30 minutes)
+// Close games (<4h): every 30 min | Far games (>4h): 6h heartbeat | Live: skipped
+Schedule::job(new OddsRefreshJob)->everyThirtyMinutes();

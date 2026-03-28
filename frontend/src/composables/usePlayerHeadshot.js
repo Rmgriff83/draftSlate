@@ -8,7 +8,7 @@ const sportToLeague = {
   americanfootball_nfl: 'nfl',
 }
 
-// Module-level cache — shared across all components, fetched once per league per page session
+// Module-level cache — stores Promises to deduplicate concurrent calls
 const cache = new Map()
 
 export function usePlayerHeadshot(pick) {
@@ -21,13 +21,14 @@ export function usePlayerHeadshot(pick) {
     if (!league) return
 
     try {
-      let map = cache.get(league)
-      if (!map) {
-        const { data } = await api.get(`/api/v1/headshots/${league}`)
-        map = data.players || {}
-        cache.set(league, map)
+      let mapPromise = cache.get(league)
+      if (!mapPromise) {
+        mapPromise = api.get(`/api/v1/headshots/${league}`).then(({ data }) => data.players || {})
+        cache.set(league, mapPromise)
+        mapPromise.catch(() => cache.delete(league))
       }
 
+      const map = await mapPromise
       const player = map[pick.player_name]
       if (player?.url) {
         headshotUrl.value = player.url

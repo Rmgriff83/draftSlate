@@ -101,16 +101,20 @@ class SlateController extends Controller
                 'id' => $matchup->id,
                 'week' => $matchup->week,
                 'status' => $matchup->status,
+                'is_playoff' => (bool) $matchup->is_playoff,
+                'playoff_round' => $matchup->playoff_round,
                 'is_home' => $isHome,
                 'home_team' => [
                     'id' => $matchup->homeTeam->id,
                     'team_name' => $matchup->homeTeam->team_name,
                     'user_name' => $matchup->homeTeam->user->display_name ?? null,
+                    'avatar_url' => $matchup->homeTeam->user->avatar_url ?? null,
                 ],
                 'away_team' => [
                     'id' => $matchup->awayTeam->id,
                     'team_name' => $matchup->awayTeam->team_name,
                     'user_name' => $matchup->awayTeam->user->display_name ?? null,
+                    'avatar_url' => $matchup->awayTeam->user->avatar_url ?? null,
                 ],
                 'home_score' => $matchup->home_score,
                 'away_score' => $matchup->away_score,
@@ -138,6 +142,7 @@ class SlateController extends Controller
                 'ties' => $member->ties,
                 'total_correct_picks' => $member->total_correct_picks,
                 'playoff_seed' => $member->playoff_seed,
+                'final_position' => $member->final_position,
                 'is_current_user' => $member->id === $membership->id,
                 'win_percentage' => $totalGames > 0
                     ? round(($member->wins + ($member->ties * 0.5)) / $totalGames, 3)
@@ -303,11 +308,11 @@ class SlateController extends Controller
         // Mark as refreshed (15 min cooldown)
         cache()->put($cacheKey, true, now()->addMinutes(15));
 
-        // Get active pick selections (pre-game + in-progress)
+        // Get active pick selections (pre-game only — no API calls for live games)
         $selections = $slatePool->pickSelections()
             ->where('outcome', 'pending')
             ->where('is_drafted', true)
-            ->where('game_time', '>', now()->subHours(6))
+            ->where('game_time', '>', now())
             ->get();
 
         if ($selections->isEmpty()) {

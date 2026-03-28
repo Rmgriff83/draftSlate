@@ -23,6 +23,7 @@ class DraftAutoPickJob implements ShouldQueue
         public int $draftStateId,
         public int $drafterId,
         public int $expectedPickIndex,
+        public string $expectedStartedAt = '',
     ) {
         $this->onQueue('draft-high');
     }
@@ -41,6 +42,16 @@ class DraftAutoPickJob implements ShouldQueue
                 'draft_id' => $this->draftStateId,
                 'expected_index' => $this->expectedPickIndex,
                 'current_index' => $draft->current_pick_index,
+            ]);
+            return;
+        }
+
+        // Stale job check: if timer was reset (e.g. autodraft disabled), skip
+        if ($this->expectedStartedAt && $draft->current_pick_started_at?->toISOString() !== $this->expectedStartedAt) {
+            Log::info("DraftAutoPickJob: Timer was reset, skipping", [
+                'draft_id' => $this->draftStateId,
+                'expected_started_at' => $this->expectedStartedAt,
+                'actual_started_at' => $draft->current_pick_started_at?->toISOString(),
             ]);
             return;
         }

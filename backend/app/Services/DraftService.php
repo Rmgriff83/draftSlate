@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Events\DraftAdvanced;
 use App\Events\DraftCompleted;
 use App\Events\DraftPickMade;
+use App\Events\DraftPicksBegin;
 use App\Events\DraftStarted;
 use App\Jobs\DraftAutoPickJob;
 use App\Models\DraftState;
@@ -24,13 +25,16 @@ class DraftService
     ) {}
 
     /**
-     * Initialize the draft: create DraftState, generate order, broadcast.
+     * Initialize the draft: transition to active with study period.
+     * Sets current_pick_started_at = null (picks begin after countdown).
+     * Called by LaunchDraftJob.
      */
     public function initializeDraft(League $league, SlatePool $slatePool): DraftState
     {
         $week = $slatePool->week;
         $totalRounds = $league->getTotalRounds();
         $orderData = $this->orderService->generateDraftOrder($league, $week);
+        $countdownMinutes = config('draftslate.draft.pre_draft_countdown_minutes', 12);
 
         $draftState = DraftState::updateOrCreate(
             ['league_id' => $league->id, 'week' => $week],
@@ -42,18 +46,29 @@ class DraftService
                 'current_round' => 1,
                 'current_pick_index' => 0,
                 'current_drafter_id' => $orderData['order'][0] ?? null,
-                'current_pick_started_at' => now(),
+                'current_pick_started_at' => null,
                 'total_rounds' => $totalRounds,
                 'started_at' => now(),
+                'draft_starts_at' => now()->addMinutes($countdownMinutes),
             ]
         );
 
-        event(new DraftStarted($draftState));
-
-        // Schedule auto-pick for the first drafter
-        $this->scheduleAutoPick($draftState, $league);
-
         return $draftState;
+    }
+
+    /**
+     * Begin the first pick: set current_pick_started_at, broadcast, schedule auto-pick.
+     * Called by BeginFirstPickJob after the study countdown expires.
+     */
+    public function beginFirstPick(DraftState $draft): void
+    {
+        $draft->update(['current_pick_started_at' => now()]);
+
+        event(new DraftPicksBegin($draft));
+
+        $this->scheduleAutoPick($draft, $draft->league);
+
+        Log::info("DraftService: Picks begun for draft {$draft->id}, first drafter: {$draft->current_drafter_id}");
     }
 
     /**
@@ -76,6 +91,10 @@ class DraftService
 
             if ($draft->status !== 'active') {
                 throw new \RuntimeException('The draft is not active.');
+            }
+
+            if ($draft->current_pick_started_at === null) {
+                throw new \RuntimeException('The draft countdown has not finished yet.');
             }
 
             // Validate pick is available
@@ -149,6 +168,16 @@ class DraftService
 
             // Mark pick as drafted
             $pick->update(['is_drafted' => true]);
+
+            // Manual pick clears autodraft tracking
+            $consecutiveCounts = $draft->consecutive_auto_picks ?? [];
+            $consecutiveCounts[$drafter->id] = 0;
+            $draft->consecutive_auto_picks = $consecutiveCounts;
+
+            $autoMembers = $draft->auto_draft_members ?? [];
+            $autoMembers = array_values(array_filter($autoMembers, fn ($id) => $id !== $drafter->id));
+            $draft->auto_draft_members = $autoMembers;
+            $draft->save();
 
             // Broadcast pick made
             event(new DraftPickMade($draft, $slatePick, $drafter, false));
@@ -333,6 +362,22 @@ class DraftService
                 'drafted_odds' => $selectedPick->snapshot_odds,
             ]);
 
+            // Track consecutive auto-picks for autodraft mode
+            $consecutiveCounts = $draft->consecutive_auto_picks ?? [];
+            $consecutiveCounts[$drafter->id] = ($consecutiveCounts[$drafter->id] ?? 0) + 1;
+            $draft->consecutive_auto_picks = $consecutiveCounts;
+
+            $threshold = config('draftslate.draft.autodraft_consecutive_threshold', 2);
+            if ($consecutiveCounts[$drafter->id] >= $threshold && !$draft->isInAutoDraft($drafter->id)) {
+                $autoMembers = $draft->auto_draft_members ?? [];
+                $autoMembers[] = $drafter->id;
+                $draft->auto_draft_members = $autoMembers;
+
+                Log::info("DraftService: Drafter {$drafter->id} entered autodraft after {$consecutiveCounts[$drafter->id]} consecutive auto-picks");
+            }
+
+            $draft->save();
+
             event(new DraftPickMade($draft, $slatePick, $drafter, true));
 
             $this->advanceDraft($draft);
@@ -395,18 +440,54 @@ class DraftService
     }
 
     /**
+     * Disable autodraft for a member. Resets timer if it's currently their turn.
+     */
+    public function disableAutoDraft(DraftState $draft, LeagueMembership $membership): void
+    {
+        $autoMembers = $draft->auto_draft_members ?? [];
+        $autoMembers = array_values(array_filter($autoMembers, fn ($id) => $id !== $membership->id));
+        $draft->auto_draft_members = $autoMembers;
+
+        $consecutiveCounts = $draft->consecutive_auto_picks ?? [];
+        $consecutiveCounts[$membership->id] = 0;
+        $draft->consecutive_auto_picks = $consecutiveCounts;
+
+        // If it's currently their turn, reset the timer so they get the full duration
+        if ($draft->current_drafter_id === $membership->id) {
+            $draft->current_pick_started_at = now();
+        }
+
+        $draft->save();
+
+        Log::info("DraftService: Autodraft disabled for member {$membership->id}");
+
+        // Re-broadcast so frontend gets updated timer and autodraft list
+        if ($draft->current_drafter_id === $membership->id) {
+            event(new DraftAdvanced($draft));
+            $this->scheduleAutoPick($draft, $draft->league);
+        }
+    }
+
+    /**
      * Schedule an auto-pick job for the current drafter with the pick timer delay.
      */
     private function scheduleAutoPick(DraftState $draft, League $league): void
     {
-        $delay = ($league->pick_timer_seconds ?? 60) + config('draftslate.draft.auto_pick_timeout_buffer', 5);
+        $buffer = config('draftslate.draft.auto_pick_timeout_buffer', 5);
+
+        if ($draft->isInAutoDraft($draft->current_drafter_id)) {
+            $delay = config('draftslate.draft.autodraft_delay_seconds', 3) + $buffer;
+        } else {
+            $delay = ($league->pick_timer_seconds ?? 60) + $buffer;
+        }
 
         DraftAutoPickJob::dispatch(
             $draft->id,
             $draft->current_drafter_id,
             $draft->current_pick_index,
+            $draft->current_pick_started_at?->toISOString() ?? '',
         )->delay(now()->addSeconds($delay));
 
-        Log::info("DraftService: Scheduled auto-pick for drafter {$draft->current_drafter_id} at index {$draft->current_pick_index} in {$delay}s");
+        Log::info("DraftService: Scheduled auto-pick for drafter {$draft->current_drafter_id} at index {$draft->current_pick_index} in {$delay}s" . ($draft->isInAutoDraft($draft->current_drafter_id) ? ' (autodraft)' : ''));
     }
 }

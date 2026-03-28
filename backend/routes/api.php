@@ -11,6 +11,8 @@ use App\Http\Controllers\MatchupController;
 use App\Http\Controllers\PickController;
 use App\Http\Controllers\SlateController;
 use App\Http\Controllers\StandingsController;
+use App\Http\Controllers\PlayoffController;
+use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ping', fn () => response()->json(['status' => 'ok']));
@@ -62,11 +64,19 @@ Route::prefix('v1')->group(function () {
         Route::get('/picks/{pickSelection}/study', [PickController::class, 'study']);
         Route::get('/picks/{pickSelection}/odds-history', [PickController::class, 'oddsHistory']);
 
+        // Users
+        Route::get('/users/{user}/career-stats', [UserController::class, 'careerStats']);
+
         // Draft
         Route::get('/leagues/{league}/draft', [DraftController::class, 'show']);
         Route::get('/leagues/{league}/draft/pool', [DraftController::class, 'getPool']);
         Route::post('/leagues/{league}/draft/pick', [DraftController::class, 'submitPick']);
         Route::get('/leagues/{league}/draft/order', [DraftController::class, 'getOrder']);
-        Route::post('/leagues/{league}/draft/start', [DraftController::class, 'start']);
+
+        Route::post('/leagues/{league}/draft/autodraft/disable', [DraftController::class, 'disableAutoDraft']);
+
+        // Playoffs
+        Route::get('/leagues/{league}/playoffs/bracket', [PlayoffController::class, 'bracket']);
+        Route::get('/leagues/{league}/playoffs/payouts', [PlayoffController::class, 'payouts']);
     });
 });

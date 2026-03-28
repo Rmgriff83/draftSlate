@@ -7,7 +7,10 @@ import { useAuthStore } from '@/stores/auth'
 import MyPicksTab from '@/components/league/MyPicksTab.vue'
 import MatchupTab from '@/components/league/MatchupTab.vue'
 import StandingsTab from '@/components/league/StandingsTab.vue'
+import HomeTab from '@/components/league/HomeTab.vue'
 import PickDetailSheet from '@/components/league/PickDetailSheet.vue'
+import UserDetailSheet from '@/components/league/UserDetailSheet.vue'
+import BracketTab from '@/components/league/BracketTab.vue'
 import TeamHeader from '@/components/league/TeamHeader.vue'
 
 const route = useRoute()
@@ -24,9 +27,10 @@ const actionLoading = ref(false)
 const actionError = ref('')
 
 // Tabbed layout state
-const activeTab = ref('picks')
+const activeTab = ref('home')
 const selectedWeek = ref(1)
 const detailPick = ref(null)
+const detailUser = ref(null)
 let pollInterval = null
 
 const league = computed(() => leagueStore.currentLeague)
@@ -48,7 +52,11 @@ const isActiveState = computed(() =>
 )
 
 const maxWeek = computed(() =>
-  league.value?.current_week || league.value?.total_matchups || 1
+  league.value?.current_week || league.value?.total_weeks_including_playoffs || league.value?.total_matchups || 1
+)
+
+const showBracketTab = computed(() =>
+  ['playoffs', 'completed'].includes(league.value?.state)
 )
 
 function stateLabel(state) {
@@ -75,10 +83,10 @@ const tzLabels = {
 }
 
 const playoffLabels = {
-  A: 'Single Elimination',
-  B: 'Double Elimination',
-  C: 'Round Robin Finals',
-  D: 'No Playoffs',
+  A: 'Top 4',
+  B: 'Top 4 + Consolation',
+  C: 'Top 6 Brackets',
+  D: 'Full League Playoffs',
 }
 
 function payoutLabel(ps) {
@@ -143,6 +151,10 @@ function openPickDetail(pick) {
   detailPick.value = pick
 }
 
+function openUserDetail(member) {
+  detailUser.value = member
+}
+
 async function handleSwap({ pickId, targetPosition, targetSlot, targetSlotType }) {
   const result = await slate.swapPick(league.value.id, pickId, targetPosition, targetSlot, targetSlotType)
   if (result.success) {
@@ -163,7 +175,7 @@ function startPolling() {
   if (pollInterval) return
   pollInterval = setInterval(() => {
     loadWeekData()
-  }, 180_000)
+  }, 60_000)
 }
 
 watch(
@@ -408,9 +420,11 @@ onUnmounted(() => {
           <div class="flex border-b border-ds-border">
             <button
               v-for="tab in [
-                { key: 'picks', label: 'My Picks' },
+                { key: 'home', label: 'Home' },
+                { key: 'picks', label: 'My Slate' },
                 { key: 'matchup', label: 'Matchup' },
                 { key: 'standings', label: 'Standings' },
+                ...(showBracketTab ? [{ key: 'bracket', label: 'Bracket' }] : []),
               ]"
               :key="tab.key"
               @click="activeTab = tab.key"
@@ -432,9 +446,11 @@ onUnmounted(() => {
             <p class="text-sm text-ds-text-tertiary">Loading...</p>
           </div>
           <template v-else>
-            <MyPicksTab v-if="activeTab === 'picks'" @open-detail="openPickDetail" />
+            <HomeTab v-if="activeTab === 'home'" />
+            <MyPicksTab v-else-if="activeTab === 'picks'" @open-detail="openPickDetail" />
             <MatchupTab v-else-if="activeTab === 'matchup'" @open-detail="openPickDetail" />
-            <StandingsTab v-else-if="activeTab === 'standings'" />
+            <StandingsTab v-else-if="activeTab === 'standings'" @open-user-detail="openUserDetail" />
+            <BracketTab v-else-if="activeTab === 'bracket'" />
           </template>
         </div>
       </template>
@@ -446,6 +462,13 @@ onUnmounted(() => {
       :pick="detailPick"
       @close="detailPick = null"
       @swap="handleSwap"
+    />
+
+    <!-- User Detail Sheet -->
+    <UserDetailSheet
+      v-if="detailUser"
+      :member="detailUser"
+      @close="detailUser = null"
     />
 
     <!-- Leave Confirmation Modal -->

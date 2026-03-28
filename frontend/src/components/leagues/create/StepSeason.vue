@@ -12,10 +12,10 @@ function update(field, value) {
 }
 
 const playoffFormats = [
-  { value: 'A', label: 'Single Elimination', desc: 'Top seeds, single elimination bracket' },
-  { value: 'B', label: 'Double Elimination', desc: 'Winners and losers brackets' },
-  { value: 'C', label: 'Round Robin Finals', desc: 'Top 4 play each other once' },
-  { value: 'D', label: 'No Playoffs', desc: 'Best regular season record wins' },
+  { value: 'A', label: 'Top 4', desc: 'Top 4 seeds, single elimination (2 playoff weeks)' },
+  { value: 'B', label: 'Top 4 + Consolation', desc: 'Top 4 with 3rd place game (2 playoff weeks)' },
+  { value: 'C', label: 'Top 6 Brackets', desc: 'Top 6 seeds with byes for 1-2 (3 playoff weeks)' },
+  { value: 'D', label: 'Full League Playoffs', desc: 'All teams compete in playoffs (3 playoff weeks)' },
 ]
 
 watch(

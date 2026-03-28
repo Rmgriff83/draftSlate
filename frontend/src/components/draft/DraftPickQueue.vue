@@ -76,8 +76,19 @@ function initials(name) {
                     : 'border-ds-border bg-ds-bg-hover text-ds-text-secondary'
                 "
               >
-                {{ initials(drafter.team_name) }}
+                <img
+                  v-if="drafter.avatar_url"
+                  :src="drafter.avatar_url"
+                  :alt="drafter.team_name"
+                  class="w-full h-full object-cover"
+                />
+                <span v-else>{{ initials(drafter.team_name) }}</span>
               </div>
+              <!-- AUTO badge for autodraft members (outside overflow-hidden avatar) -->
+              <span
+                v-if="draft.autoDraftMembers.includes(drafter.id)"
+                class="absolute top-[38px] left-1/2 -translate-x-1/2 px-1 py-px rounded-full bg-ds-red text-[6px] font-bold text-white uppercase tracking-wider whitespace-nowrap leading-none z-10"
+              >AUTO</span>
               <span
                 class="text-[10px] font-semibold w-full truncate text-center leading-tight"
                 :class="drafter.isCurrent ? 'text-ds-primary' : 'text-ds-text-tertiary'"

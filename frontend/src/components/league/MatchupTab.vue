@@ -1,6 +1,8 @@
 <script setup>
 import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
+import PickImage from '@/components/common/PickImage.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useSlateStore } from '@/stores/slate'
 import { useSlateHelpers } from '@/composables/useSlateHelpers'
 
@@ -19,6 +21,8 @@ const {
   pickProgress,
   pickResultText,
   formatGameTime,
+  aggregateImpliedProb,
+  impliedProbToAmerican,
 } = useSlateHelpers()
 
 const matchup = computed(() => slate.myMatchup)
@@ -36,6 +40,16 @@ const opponentTeamName = computed(() => {
   return matchup.value.is_home
     ? matchup.value.away_team?.team_name
     : matchup.value.home_team?.team_name
+})
+
+const myTeam = computed(() => {
+  if (!matchup.value) return null
+  return matchup.value.is_home ? matchup.value.home_team : matchup.value.away_team
+})
+
+const opponentTeam = computed(() => {
+  if (!matchup.value) return null
+  return matchup.value.is_home ? matchup.value.away_team : matchup.value.home_team
 })
 
 function pickIsLive(pick) {
@@ -131,6 +145,69 @@ const pairedSlots = computed(() => {
 })
 
 const isCompleted = computed(() => matchup.value?.status === 'completed')
+
+// Overall Odds computeds — always use most current odds available
+function getPickOdds(pick) {
+  if (!pick) return null
+  return pick.pick_selection?.current_odds ?? pick.locked_odds ?? pick.pick_selection?.snapshot_odds ?? pick.drafted_odds
+}
+
+const myStarterOdds = computed(() => {
+  if (!matchup.value) return []
+  const starters = (matchup.value.my_picks || []).filter(p => p.position === 'starter')
+  return starters.map(p => getPickOdds(p)).filter(o => o != null)
+})
+
+const oppStarterOdds = computed(() => {
+  if (!matchup.value) return []
+  const starters = (matchup.value.opponent_picks || []).filter(p => p.position === 'starter')
+  return starters.map(p => getPickOdds(p)).filter(o => o != null)
+})
+
+const allMyStartersLocked = computed(() => {
+  if (!matchup.value) return false
+  const starters = (matchup.value.my_picks || []).filter(p => p.position === 'starter')
+  return starters.length > 0 && starters.every(p => p.is_locked)
+})
+
+const allOppStartersLocked = computed(() => {
+  if (!matchup.value) return false
+  const starters = (matchup.value.opponent_picks || []).filter(p => p.position === 'starter')
+  return starters.length > 0 && starters.every(p => p.is_locked)
+})
+
+const allLocked = computed(() => allMyStartersLocked.value && allOppStartersLocked.value)
+
+const myLockedStatus = computed(() => {
+  if (!matchup.value) return { locked: 0, total: 0 }
+  const starters = (matchup.value.my_picks || []).filter(p => p.position === 'starter')
+  return { locked: starters.filter(p => p.is_locked).length, total: starters.length }
+})
+
+const oppLockedStatus = computed(() => {
+  if (!matchup.value) return { locked: 0, total: 0 }
+  const starters = (matchup.value.opponent_picks || []).filter(p => p.position === 'starter')
+  return { locked: starters.filter(p => p.is_locked).length, total: starters.length }
+})
+
+const myAggregateAmerican = computed(() => {
+  if (myStarterOdds.value.length === 0) return null
+  return impliedProbToAmerican(aggregateImpliedProb(myStarterOdds.value))
+})
+
+const oppAggregateAmerican = computed(() => {
+  if (oppStarterOdds.value.length === 0) return null
+  return impliedProbToAmerican(aggregateImpliedProb(oppStarterOdds.value))
+})
+
+const oddsWinner = computed(() => {
+  if (!allLocked.value) return null
+  if (myStarterOdds.value.length === 0 || oppStarterOdds.value.length === 0) return null
+  const myProb = aggregateImpliedProb(myStarterOdds.value)
+  const oppProb = aggregateImpliedProb(oppStarterOdds.value)
+  if (Math.abs(myProb - oppProb) < 0.0001) return null
+  return myProb < oppProb ? 'my' : 'opponent'
+})
 </script>
 
 <template>
@@ -138,20 +215,22 @@ const isCompleted = computed(() => matchup.value?.status === 'completed')
     <!-- Empty state -->
     <div v-if="!hasMatchup" class="ds-card p-6 text-center">
       <Icon icon="mdi:account-group" class="w-10 h-10 text-gray-600 mx-auto mb-3" />
-      <p class="text-gray-400">No matchup scheduled for this week</p>
+      <p class="text-gray-400">No matchup scheduled</p>
     </div>
 
     <template v-else>
       <!-- Score header -->
       <div class="ds-card p-4">
         <div class="flex items-center justify-center gap-6">
-          <div class="text-center flex-1">
-            <p class="text-xs text-gray-400 mb-1 truncate">{{ myTeamName }}</p>
+          <div class="text-center flex-1 flex flex-col items-center">
+            <UserAvatar :avatar-url="myTeam?.avatar_url" :name="myTeam?.user_name || myTeamName" size="md" />
+            <p class="text-xs text-gray-400 mt-1 truncate max-w-full">{{ myTeamName }}</p>
             <p class="text-3xl font-black text-white animate-score-pop">{{ slate.myScore }}</p>
           </div>
           <span class="text-lg text-gray-500 font-bold">&mdash;</span>
-          <div class="text-center flex-1">
-            <p class="text-xs text-gray-400 mb-1 truncate">{{ opponentTeamName }}</p>
+          <div class="text-center flex-1 flex flex-col items-center">
+            <UserAvatar :avatar-url="opponentTeam?.avatar_url" :name="opponentTeam?.user_name || opponentTeamName" size="md" />
+            <p class="text-xs text-gray-400 mt-1 truncate max-w-full">{{ opponentTeamName }}</p>
             <p class="text-3xl font-black text-white animate-score-pop">{{ slate.opponentScore }}</p>
           </div>
         </div>
@@ -182,9 +261,118 @@ const isCompleted = computed(() => matchup.value?.status === 'completed')
       <div class="space-y-1.5">
         <!-- Column headers -->
         <div class="grid grid-cols-2 gap-2 px-1">
-          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider">You</p>
-          <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider text-right">Opponent</p>
+          <div class="flex items-center gap-1.5">
+            <UserAvatar :avatar-url="myTeam?.avatar_url" :name="myTeam?.user_name || myTeamName" size="xs" />
+            <p class="text-xs font-semibold text-gray-400 truncate">{{ myTeamName }}</p>
+          </div>
+          <div class="flex items-center gap-1.5 justify-end">
+            <p class="text-xs font-semibold text-gray-400 truncate">{{ opponentTeamName }}</p>
+            <UserAvatar :avatar-url="opponentTeam?.avatar_url" :name="opponentTeam?.user_name || opponentTeamName" size="xs" />
+          </div>
         </div>
+
+        <!-- Overall Odds category -->
+        <template v-if="myStarterOdds.length > 0 || oppStarterOdds.length > 0">
+          <div class="pt-2 pb-0.5 px-1">
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-400">
+              Overall Odds
+            </span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <!-- My side -->
+            <div :class="[
+              'ds-card p-2.5 text-left',
+              allLocked && oddsWinner === 'my' ? 'border-l-2 border-green-500' : '',
+              allLocked && oddsWinner && oddsWinner !== 'my' ? 'border-l-2 border-red-500' : '',
+            ]">
+              <div class="flex items-center gap-1 mb-1">
+                <span v-if="allLocked && oddsWinner === 'my'" class="text-[9px] font-bold px-1 py-0.5 rounded bg-green-500/20 text-green-400">
+                  HIT
+                </span>
+                <span v-else-if="allLocked && oddsWinner" class="text-[9px] font-bold px-1 py-0.5 rounded bg-red-500/20 text-red-400">
+                  MISS
+                </span>
+                <span v-else-if="allLocked" class="text-[9px] font-bold px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
+                  PUSH
+                </span>
+                <span v-else class="text-[9px] font-bold px-1 py-0.5 rounded bg-gray-600/20 text-gray-500">
+                  PENDING
+                </span>
+              </div>
+              <div class="flex items-center gap-2">
+                <Icon icon="mdi:scale-balance" class="w-5 h-5 text-teal-400 shrink-0" />
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs text-white">Line</p>
+                  <p class="text-[10px] text-gray-500 mt-0.5">{{ myLockedStatus.locked }}/{{ myLockedStatus.total }} starters locked</p>
+                </div>
+              </div>
+              <!-- Graded: show checkmark / X + odds -->
+              <template v-if="allLocked">
+                <p :class="[
+                  'text-[10px] font-mono font-bold mt-1',
+                  oddsWinner === 'my' ? 'text-green-400' : oddsWinner ? 'text-red-400' : 'text-yellow-400',
+                ]">
+                  {{ myAggregateAmerican != null ? formatOdds(myAggregateAmerican) : '--' }}
+                </p>
+                <div class="mt-1">
+                  <Icon v-if="oddsWinner === 'my'" icon="mdi:check-circle" class="w-6 h-6 text-green-400" />
+                  <Icon v-else-if="oddsWinner" icon="mdi:close-circle" class="w-6 h-6 text-red-400" />
+                  <Icon v-else icon="mdi:minus-circle" class="w-6 h-6 text-yellow-400" />
+                </div>
+              </template>
+              <!-- Pending: show odds value -->
+              <p v-else class="text-[10px] font-mono font-bold mt-1 text-white">
+                {{ myAggregateAmerican != null ? formatOdds(myAggregateAmerican) : '--' }}
+              </p>
+            </div>
+            <!-- Opponent side -->
+            <div :class="[
+              'ds-card p-2.5 text-right',
+              allLocked && oddsWinner === 'opponent' ? 'border-r-2 border-green-500' : '',
+              allLocked && oddsWinner && oddsWinner !== 'opponent' ? 'border-r-2 border-red-500' : '',
+            ]">
+              <div class="flex items-center gap-1 mb-1 justify-end">
+                <span v-if="allLocked && oddsWinner === 'opponent'" class="text-[9px] font-bold px-1 py-0.5 rounded bg-green-500/20 text-green-400">
+                  HIT
+                </span>
+                <span v-else-if="allLocked && oddsWinner" class="text-[9px] font-bold px-1 py-0.5 rounded bg-red-500/20 text-red-400">
+                  MISS
+                </span>
+                <span v-else-if="allLocked" class="text-[9px] font-bold px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-400">
+                  PUSH
+                </span>
+                <span v-else class="text-[9px] font-bold px-1 py-0.5 rounded bg-gray-600/20 text-gray-500">
+                  PENDING
+                </span>
+              </div>
+              <div class="flex items-center gap-2 flex-row-reverse">
+                <Icon icon="mdi:scale-balance" class="w-5 h-5 text-teal-400 shrink-0" />
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs text-white">Line</p>
+                  <p class="text-[10px] text-gray-500 mt-0.5">{{ oppLockedStatus.locked }}/{{ oppLockedStatus.total }} starters locked</p>
+                </div>
+              </div>
+              <!-- Graded: show checkmark / X + odds -->
+              <template v-if="allLocked">
+                <p :class="[
+                  'text-[10px] font-mono font-bold mt-1',
+                  oddsWinner === 'opponent' ? 'text-green-400' : oddsWinner ? 'text-red-400' : 'text-yellow-400',
+                ]">
+                  {{ oppAggregateAmerican != null ? formatOdds(oppAggregateAmerican) : '--' }}
+                </p>
+                <div class="mt-1 flex justify-end">
+                  <Icon v-if="oddsWinner === 'opponent'" icon="mdi:check-circle" class="w-6 h-6 text-green-400" />
+                  <Icon v-else-if="oddsWinner" icon="mdi:close-circle" class="w-6 h-6 text-red-400" />
+                  <Icon v-else icon="mdi:minus-circle" class="w-6 h-6 text-yellow-400" />
+                </div>
+              </template>
+              <!-- Pending: show odds value -->
+              <p v-else class="text-[10px] font-mono font-bold mt-1 text-white">
+                {{ oppAggregateAmerican != null ? formatOdds(oppAggregateAmerican) : '--' }}
+              </p>
+            </div>
+          </div>
+        </template>
 
         <template v-for="row in pairedSlots" :key="row.isHeader ? row.slotType : row.key">
           <!-- Type section header -->
@@ -223,11 +411,16 @@ const isCompleted = computed(() => matchup.value?.status === 'completed')
                     {{ outcomeLabel(row.mine.pick_selection.outcome) }}
                   </span>
                 </div>
+                <div class="flex items-start gap-2">
+                  <PickImage :pick="row.mine.pick_selection" size="sm" />
+                  <div class="flex-1 min-w-0">
                 <p class="text-xs text-white truncate">{{ row.mine.pick_selection?.description }}</p>
                 <p class="text-[10px] text-gray-500 truncate mt-0.5">
                   {{ row.mine.pick_selection?.game_display }}
                   <span v-if="formatGameTime(row.mine.pick_selection?.game_time)"> · {{ formatGameTime(row.mine.pick_selection?.game_time) }}</span>
                 </p>
+                  </div>
+                </div>
                 <!-- Result summary for graded picks -->
                 <p v-if="pickIsGraded(row.mine) && !pickIsLive(row.mine) && pickResultText(row.mine)" class="text-[10px] font-mono text-gray-300 mt-0.5">
                   {{ pickResultText(row.mine) }}
@@ -320,11 +513,16 @@ const isCompleted = computed(() => matchup.value?.status === 'completed')
                     {{ outcomeLabel(row.opponent.pick_selection.outcome) }}
                   </span>
                 </div>
+                <div class="flex items-start gap-2 flex-row-reverse">
+                  <PickImage :pick="row.opponent.pick_selection" size="sm" />
+                  <div class="flex-1 min-w-0">
                 <p class="text-xs text-white truncate">{{ row.opponent.pick_selection?.description }}</p>
                 <p class="text-[10px] text-gray-500 truncate mt-0.5">
                   {{ row.opponent.pick_selection?.game_display }}
                   <span v-if="formatGameTime(row.opponent.pick_selection?.game_time)"> · {{ formatGameTime(row.opponent.pick_selection?.game_time) }}</span>
                 </p>
+                  </div>
+                </div>
                 <!-- Result summary for graded picks -->
                 <p v-if="pickIsGraded(row.opponent) && !pickIsLive(row.opponent) && pickResultText(row.opponent)" class="text-[10px] font-mono text-gray-300 mt-0.5">
                   {{ pickResultText(row.opponent) }}

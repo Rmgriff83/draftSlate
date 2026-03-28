@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\League;
 use App\Models\LeagueMembership;
+use App\Models\Matchup;
 
 class DraftOrderService
 {
@@ -17,6 +18,22 @@ class DraftOrderService
         $memberships = $league->memberships()
             ->where('is_active', true)
             ->get();
+
+        // During playoffs, only include teams with a matchup this week
+        if ($league->isInPlayoffs()) {
+            $playoffTeamIds = Matchup::where('league_id', $league->id)
+                ->where('week', $week)
+                ->where('is_playoff', true)
+                ->where('status', '!=', 'completed') // exclude byes
+                ->get()
+                ->flatMap(fn ($m) => [$m->home_team_id, $m->away_team_id])
+                ->unique()
+                ->values();
+
+            $memberships = $memberships->filter(
+                fn ($m) => $playoffTeamIds->contains($m->id)
+            )->values();
+        }
 
         if ($memberships->isEmpty()) {
             return ['order' => [], 'weights' => []];

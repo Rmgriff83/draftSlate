@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
+import PickImage from '@/components/common/PickImage.vue'
 import { useSlateHelpers } from '@/composables/useSlateHelpers'
 
 const props = defineProps({
@@ -86,13 +87,8 @@ const cardClasses = computed(() => {
 <template>
   <div :class="cardClasses" @click="emit('tap', pick)">
     <div class="flex items-center gap-3">
-      <!-- Sport icon -->
-      <div class="flex-shrink-0">
-        <Icon
-          :icon="sportIcons[ps.sport] || 'mdi:trophy'"
-          :class="['w-5 h-5', live ? 'text-ds-green' : (sportIconColors[ps.sport] || 'text-gray-400')]"
-        />
-      </div>
+      <!-- Pick image (headshot / team logo / sport icon fallback) -->
+      <PickImage :pick="ps" size="md" />
 
       <!-- Main content -->
       <div class="flex-1 min-w-0">

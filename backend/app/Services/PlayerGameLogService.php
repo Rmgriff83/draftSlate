@@ -8,8 +8,6 @@ use Illuminate\Support\Facades\Log;
 
 class PlayerGameLogService
 {
-    private string $bdlBaseUrl;
-    private string $bdlApiKey;
     private int $cacheTtl;
 
     private array $nbaHeaders = [
@@ -19,8 +17,6 @@ class PlayerGameLogService
 
     public function __construct()
     {
-        $this->bdlBaseUrl = rtrim(config('draftslate.game_logs.balldontlie_base_url', 'https://api.balldontlie.io/v1'), '/');
-        $this->bdlApiKey = config('draftslate.game_logs.balldontlie_api_key', '');
         $this->cacheTtl = (int) config('draftslate.odds_api.cache_ttl_seconds', 180);
     }
 
@@ -111,7 +107,7 @@ class PlayerGameLogService
         };
     }
 
-    // ─── NBA (BallDontLie + NBA CDN) ─────────────────────────────────
+    // ─── NBA (NBA CDN) ────────────────────────────────────────────────
 
     private function getNbaStudyData(string $playerName, string $category, float $threshold, string $side): ?array
     {
@@ -184,75 +180,96 @@ class PlayerGameLogService
     }
 
     /**
-     * Search BallDontLie for an NBA player by name, return their team abbreviation and info.
+     * Find an NBA player's team by scanning recent box scores from the NBA CDN.
      */
     public function findNbaPlayerTeam(string $playerName): ?array
     {
         $cacheKey = 'game_logs.nba.player_team.' . md5(strtolower(trim($playerName)));
 
-        $data = $this->cachedGet($cacheKey, "{$this->bdlBaseUrl}/players", [
-            'Authorization' => $this->bdlApiKey,
-        ], [
-            'search' => $playerName,
-        ]);
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
 
-        if ($data === null || empty($data['data'])) {
-            $parts = explode(' ', trim($playerName));
-            if (count($parts) > 1) {
-                $lastName = end($parts);
-                $fallbackKey = 'game_logs.nba.player_team.' . md5(strtolower($lastName) . '_fallback');
-                $data = $this->cachedGet($fallbackKey, "{$this->bdlBaseUrl}/players", [
-                    'Authorization' => $this->bdlApiKey,
-                ], [
-                    'search' => $lastName,
-                ]);
+        $scheduleKey = 'game_logs.nba.schedule';
+        $data = $this->cachedGet(
+            $scheduleKey,
+            'https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json',
+            $this->nbaHeaders
+        );
 
-                if ($data === null || empty($data['data'])) {
-                    return null;
-                }
-
-                return $this->matchBdlPlayerFromResults($data['data'], $playerName);
-            }
-
+        if ($data === null) {
             return null;
         }
 
-        return $this->matchBdlPlayerFromResults($data['data'], $playerName);
-    }
+        $dates = $data['leagueSchedule']['gameDates'] ?? [];
+        $today = date('Y-m-d');
+        $normalizedSearch = $this->normalizeName($playerName);
+        $lastNameSearch = $this->extractLastName($playerName);
+        $gamesChecked = 0;
+        $maxGamesToCheck = 30;
 
-    private function matchBdlPlayerFromResults(array $results, string $playerName): ?array
-    {
-        $normalizedSearch = strtolower(trim($playerName));
+        for ($i = count($dates) - 1; $i >= 0 && $gamesChecked < $maxGamesToCheck; $i--) {
+            $dateEntry = $dates[$i];
+            $dateStr = $dateEntry['gameDate'] ?? '';
+            $parsedDate = date('Y-m-d', strtotime($dateStr));
 
-        foreach ($results as $player) {
-            $fullName = strtolower(trim(($player['first_name'] ?? '') . ' ' . ($player['last_name'] ?? '')));
-            if ($fullName === $normalizedSearch) {
-                $team = $player['team'] ?? [];
-                return [
-                    'team_abbreviation' => $team['abbreviation'] ?? '',
-                    'player_name_matched' => trim(($player['first_name'] ?? '') . ' ' . ($player['last_name'] ?? '')),
-                ];
+            if ($parsedDate > $today) {
+                continue;
             }
-        }
 
-        $parts = explode(' ', $normalizedSearch);
-        $lastName = end($parts);
-        foreach ($results as $player) {
-            if (strtolower($player['last_name'] ?? '') === $lastName) {
-                $team = $player['team'] ?? [];
-                return [
-                    'team_abbreviation' => $team['abbreviation'] ?? '',
-                    'player_name_matched' => trim(($player['first_name'] ?? '') . ' ' . ($player['last_name'] ?? '')),
-                ];
+            foreach ($dateEntry['games'] ?? [] as $game) {
+                if ($gamesChecked >= $maxGamesToCheck) {
+                    break;
+                }
+
+                if (($game['gameStatus'] ?? 0) !== 3) {
+                    continue;
+                }
+
+                $gameId = $game['gameId'] ?? '';
+                if (empty($gameId)) {
+                    continue;
+                }
+
+                $boxCacheKey = "game_logs.nba.boxscore.{$gameId}";
+                $boxData = $this->cachedGet(
+                    $boxCacheKey,
+                    "https://cdn.nba.com/static/json/liveData/boxscore/boxscore_{$gameId}.json",
+                    $this->nbaHeaders
+                );
+
+                $gamesChecked++;
+
+                if ($boxData === null) {
+                    continue;
+                }
+
+                $gameData = $boxData['game'] ?? [];
+
+                foreach (['homeTeam', 'awayTeam'] as $side) {
+                    $teamData = $gameData[$side] ?? [];
+                    foreach ($teamData['players'] ?? [] as $player) {
+                        $name = $player['name'] ?? '';
+                        if (empty($name)) {
+                            continue;
+                        }
+
+                        $normalizedName = $this->normalizeName($name);
+                        if ($normalizedName === $normalizedSearch
+                            || $this->extractLastName($name) === $lastNameSearch) {
+                            $result = [
+                                'team_abbreviation' => $teamData['teamTricode'] ?? '',
+                                'player_name_matched' => $name,
+                            ];
+
+                            Cache::put($cacheKey, $result, $this->cacheTtl);
+
+                            return $result;
+                        }
+                    }
+                }
             }
-        }
-
-        if (!empty($results[0])) {
-            $team = $results[0]['team'] ?? [];
-            return [
-                'team_abbreviation' => $team['abbreviation'] ?? '',
-                'player_name_matched' => trim(($results[0]['first_name'] ?? '') . ' ' . ($results[0]['last_name'] ?? '')),
-            ];
         }
 
         return null;

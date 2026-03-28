@@ -23,6 +23,9 @@ return [
 
     'draft' => [
         'auto_pick_timeout_buffer' => 5,
+        'autodraft_delay_seconds' => 3,
+        'autodraft_consecutive_threshold' => 2,
+        'pre_draft_countdown_minutes' => 12,
     ],
 
     'odds' => [
@@ -43,7 +46,7 @@ return [
         ],
         'game_markets' => ['h2h', 'spreads', 'totals'],
         'refresh_interval_hours' => env('ODDS_API_REFRESH_INTERVAL_HOURS', 3),
-        'pool_build_minutes_before_draft' => 30,
+
         'min_hours_before_game' => env('ODDS_API_MIN_HOURS_BEFORE_GAME', 1),
         'cache_ttl_seconds' => env('ODDS_API_CACHE_TTL_SECONDS', 180),
     ],
@@ -60,10 +63,7 @@ return [
         'worst_case_risky_odds' => 200,
     ],
 
-    'game_logs' => [
-        'balldontlie_base_url' => 'https://api.balldontlie.io/v1',
-        'balldontlie_api_key' => env('BALLDONTLIE_API_KEY', ''),
-    ],
+    'game_logs' => [],
 
     'headshots' => [
         'disk' => env('HEADSHOTS_DISK', 'public'),

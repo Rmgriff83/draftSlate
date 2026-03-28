@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { Icon } from '@iconify/vue'
+import PickImage from '@/components/common/PickImage.vue'
 import { useDraftStore } from '@/stores/draft'
 
 const props = defineProps({
@@ -29,6 +30,11 @@ const sportLabels = {
 const availableSports = computed(() => {
   const sports = new Set(props.picks.map((p) => p.sport).filter(Boolean))
   return [...sports]
+})
+
+const activeTypes = computed(() => {
+  const config = draft.rosterConfig || {}
+  return Object.keys(config).filter((t) => config[t] > 0)
 })
 
 const hasUnfilledStarters = computed(() =>
@@ -166,10 +172,7 @@ function wouldBust(pick) {
           class="px-2 py-1 text-[10px] bg-ds-bg-secondary border border-ds-border rounded text-ds-text-secondary focus:outline-none"
         >
           <option value="">All Types</option>
-          <option value="player_prop">Props</option>
-          <option value="moneyline">ML</option>
-          <option value="spread">Spread</option>
-          <option value="total">Total</option>
+          <option v-for="t in activeTypes" :key="t" :value="t">{{ typeLabels[t] || t }}</option>
         </select>
         <select
           v-model="sortBy"
@@ -185,7 +188,7 @@ function wouldBust(pick) {
 
     <!-- Picks list -->
     <div class="relative">
-      <div class="space-y-1.5 max-h-[40vh] overflow-y-auto">
+      <div class="space-y-1.5 max-h-[30vh] overflow-y-auto pb-16">
         <button
           v-for="pick in filteredPicks"
           :key="pick.id"
@@ -200,15 +203,10 @@ function wouldBust(pick) {
           ]"
         >
           <div class="flex items-start justify-between gap-2">
+            <PickImage :pick="pick" size="sm" />
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-ds-text-primary truncate">{{ pick.description }}</p>
               <div class="flex items-center gap-1.5 mt-0.5">
-                <Icon
-                  v-if="sportIcons[pick.sport]"
-                  :icon="sportIcons[pick.sport]"
-                  class="w-3.5 h-3.5 flex-shrink-0"
-                  :class="sportIconColors[pick.sport] || 'text-ds-text-tertiary'"
-                />
                 <span
                   class="text-[10px] font-bold px-1.5 py-0.5 rounded"
                   :class="typeBadgeClasses[pick.pick_type] || 'bg-ds-bg-hover text-ds-text-tertiary'"

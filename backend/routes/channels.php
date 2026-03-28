@@ -2,9 +2,23 @@
 
 use Illuminate\Support\Facades\Broadcast;
 
-// Private channel per league draft — all league members can listen
+// Presence channel per league draft — tracks who's in the draft room
 Broadcast::channel('draft.{leagueId}', function ($user, int $leagueId) {
-    return $user->leagues()->where('leagues.id', $leagueId)->exists();
+    $membership = \App\Models\LeagueMembership::where('user_id', $user->id)
+        ->where('league_id', $leagueId)
+        ->first();
+
+    if (!$membership) {
+        return false;
+    }
+
+    return [
+        'id' => $membership->id,
+        'user_id' => $user->id,
+        'team_name' => $membership->team_name,
+        'user_name' => $user->display_name,
+        'avatar_url' => $user->avatar_url,
+    ];
 });
 
 // Private channel per league — general league events

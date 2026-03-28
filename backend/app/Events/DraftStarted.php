@@ -4,7 +4,7 @@ namespace App\Events;
 
 use App\Models\DraftState;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -25,7 +25,7 @@ class DraftStarted implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel("draft.{$this->draftState->league_id}"),
+            new PresenceChannel("draft.{$this->draftState->league_id}"),
         ];
     }
 
@@ -39,6 +39,8 @@ class DraftStarted implements ShouldBroadcast
             'week' => $this->draftState->week,
             'status' => $this->draftState->status,
             'draft_order' => $this->draftState->draft_order,
+            'draft_order_weights' => $this->draftState->draft_order_weights,
+            'draft_starts_at' => $this->draftState->draft_starts_at?->toISOString(),
             'current_drafter_id' => $this->draftState->current_drafter_id,
             'current_round' => $this->draftState->current_round,
             'total_rounds' => $this->draftState->total_rounds,
@@ -48,6 +50,7 @@ class DraftStarted implements ShouldBroadcast
                 'id' => $m->id,
                 'team_name' => $m->team_name,
                 'user_name' => $m->user->display_name,
+                'avatar_url' => $m->user->avatar_url,
             ]),
         ];
     }

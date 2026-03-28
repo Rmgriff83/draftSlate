@@ -26,7 +26,7 @@ const form = ref({
   buy_in: 10,
   payout_structure: { first: 100 },
   roster_config: { moneyline: 1, spread: 1, total: 1, player_prop: 2 },
-  aggregate_odds_floor: -250,
+  aggregate_odds_floor: -150,
   bench_slots: 2,
   sports: ['basketball_nba'],
   matchup_duration_days: 7,
@@ -35,6 +35,7 @@ const form = ref({
   pick_timer_seconds: 60,
   total_matchups: 14,
   min_hours_before_game: 1,
+  season_start_date: null,
   playoff_format: 'B',
   team_name: '',
 })

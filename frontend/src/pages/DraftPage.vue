@@ -1,7 +1,8 @@
 <script setup>
-import { onMounted, onUnmounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDraftStore } from '@/stores/draft'
+import { useLeagueStore } from '@/stores/league'
 import DraftPickQueue from '@/components/draft/DraftPickQueue.vue'
 import DraftPickFeed from '@/components/draft/DraftPickFeed.vue'
 import DraftLobby from '@/components/draft/DraftLobby.vue'
@@ -10,28 +11,58 @@ import DraftRosterPanel from '@/components/draft/DraftRosterPanel.vue'
 import DraftPickStudy from '@/components/draft/DraftPickStudy.vue'
 import DraftOrderDisplay from '@/components/draft/DraftOrderDisplay.vue'
 import AutoPickNotice from '@/components/draft/AutoPickNotice.vue'
+import AutoDraftBanner from '@/components/draft/AutoDraftBanner.vue'
 
 const route = useRoute()
 const router = useRouter()
 const draft = useDraftStore()
+const leagueStore = useLeagueStore()
 
 const leagueId = route.params.id
 const selectedPick = ref(null)
 const showStudy = ref(false)
 const showOrder = ref(false)
-const showSlate = ref(true)
+const showSlate = ref(false)
 const autoPickToast = ref(null)
 const pickError = ref('')
 
-const slateDateRange = computed(() => {
+const slateDateLabel = computed(() => {
+  const days = draft.draftState?.matchup_duration_days ?? 7
   const start = draft.draftState?.started_at ? new Date(draft.draftState.started_at) : new Date()
-  const end = new Date(start)
-  end.setDate(end.getDate() + 7)
   const fmt = (d) => `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, '0')}`
+
+  if (days === 1) {
+    const now = new Date()
+    if (start.toDateString() === now.toDateString()) return 'Today'
+    const tomorrow = new Date(now)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    if (start.toDateString() === tomorrow.toDateString()) return 'Tomorrow'
+    return fmt(start)
+  }
+
+  const end = new Date(start)
+  end.setDate(end.getDate() + days)
   return `${fmt(start)} - ${fmt(end)}`
 })
 
-const totalSlots = computed(() => draft.starterCount + draft.benchSlots)
+const typeLabels = {
+  moneyline: 'ML',
+  spread: 'Spread',
+  total: 'O/U',
+  player_prop: 'Prop',
+}
+
+const pickBreakdown = computed(() => {
+  const config = draft.rosterConfig || {}
+  const byType = draft.myStartersByType || {}
+  const parts = []
+  for (const [type, count] of Object.entries(config)) {
+    const filled = byType[type]?.filled?.length || 0
+    const label = typeLabels[type] || type
+    parts.push(`${filled}/${count} ${label}`)
+  }
+  return parts.join('  ·  ')
+})
 
 function formatOdds(odds) {
   return odds > 0 ? `+${odds}` : `${odds}`
@@ -39,8 +70,27 @@ function formatOdds(odds) {
 
 const aggregateIsPositive = computed(() => draft.aggregateAmerican >= 100)
 
+// Countdown helpers
+const countdownMinutes = computed(() => Math.floor(draft.preDraftSeconds / 60))
+const countdownSecs = computed(() => draft.preDraftSeconds % 60)
+function pad(n) {
+  return String(n).padStart(2, '0')
+}
+
+function initials(name) {
+  if (!name) return '?'
+  return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
+}
+
+const members = computed(() => draft.draftState?.members || [])
+
+function isPresent(member) {
+  return draft.presentMembers.some((u) => u.id === member.id)
+}
+
 function selectPick(pick) {
-  if (draft.draftState?.status !== 'active') return
+  const status = draft.draftState?.status
+  if (status !== 'active') return
   selectedPick.value = pick
   showStudy.value = true
   pickError.value = ''
@@ -58,7 +108,20 @@ async function draftFromStudy() {
   }
 }
 
+// Load pool when draft transitions to active (covers both WebSocket and polling paths)
+watch(
+  () => draft.draftState?.status,
+  (status) => {
+    if (status === 'active' && !draft.availablePicks.length) {
+      draft.loadPool(leagueId)
+    }
+  }
+)
+
 onMounted(async () => {
+  if (!leagueStore.currentLeague || leagueStore.currentLeague.id !== Number(leagueId)) {
+    await leagueStore.fetchLeague(leagueId)
+  }
   await draft.loadDraft(leagueId)
   if (draft.draftState?.status === 'active') {
     await draft.loadPool(leagueId)
@@ -83,16 +146,66 @@ onUnmounted(() => {
       <p class="text-sm text-ds-red">{{ draft.error }}</p>
     </div>
 
-    <!-- Lobby (preparing/not started) -->
+    <!-- Lobby (not started) -->
     <DraftLobby
-      v-else-if="!draft.draftState || ['lobby', 'preparing'].includes(draft.draftState.status)"
+      v-else-if="!draft.draftState || draft.draftState.status === 'lobby'"
       :league-id="leagueId"
     />
 
-    <!-- Active Draft -->
+    <!-- Active Draft (includes countdown study period) -->
     <template v-else-if="draft.draftState?.status === 'active'">
-      <DraftPickQueue />
-      <DraftPickFeed />
+      <!-- 12-minute countdown banner during study period -->
+      <div v-if="draft.isInCountdown" class="ds-card p-6 text-center space-y-4">
+        <p class="text-xs text-ds-text-tertiary uppercase tracking-wide">Picks begin in</p>
+        <p class="text-4xl font-black text-ds-primary tabular-nums">
+          {{ pad(countdownMinutes) }}:{{ pad(countdownSecs) }}
+        </p>
+
+        <!-- Members in draft room -->
+        <div v-if="members.length" class="flex items-center justify-center gap-3 flex-wrap">
+          <div
+            v-for="member in members"
+            :key="member.id"
+            class="flex flex-col items-center gap-1 transition-opacity duration-300"
+            :class="isPresent(member) ? 'opacity-100' : 'opacity-30'"
+          >
+            <div class="relative">
+              <div
+                class="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold border-2 overflow-hidden flex-shrink-0"
+                :class="member.id === draft.myMembershipId
+                  ? 'border-ds-primary bg-ds-primary/20 text-ds-primary'
+                  : isPresent(member)
+                    ? 'border-ds-green bg-ds-bg-hover text-ds-text-secondary'
+                    : 'border-ds-border bg-ds-bg-hover text-ds-text-secondary'"
+              >
+                <img
+                  v-if="member.avatar_url"
+                  :src="member.avatar_url"
+                  :alt="member.team_name"
+                  class="w-full h-full object-cover"
+                />
+                <span v-else>{{ initials(member.team_name) }}</span>
+              </div>
+              <span
+                v-if="isPresent(member)"
+                class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-ds-green rounded-full border-2 border-ds-bg-secondary"
+              ></span>
+            </div>
+            <span
+              class="text-[10px] font-medium max-w-[60px] truncate"
+              :class="member.id === draft.myMembershipId ? 'text-ds-primary' : 'text-ds-text-tertiary'"
+            >{{ member.team_name }}</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Only show after countdown -->
+      <template v-if="!draft.isInCountdown">
+        <AutoDraftBanner />
+        <DraftPickQueue />
+        <DraftPickFeed />
+      </template>
 
       <AvailablePicksList
         :picks="draft.availablePicks"
@@ -154,10 +267,10 @@ onUnmounted(() => {
         <div class="flex items-center justify-between gap-3">
           <div class="flex-1 min-w-0">
             <p class="text-sm font-semibold text-ds-text-primary leading-tight">
-              My Slate for {{ slateDateRange }}
+              My Slate for {{ slateDateLabel }}
             </p>
             <p class="text-[10px] text-ds-text-tertiary mt-0.5">
-              {{ draft.myPicks.length }}/{{ totalSlots }} picks
+              {{ pickBreakdown }}
             </p>
           </div>
           <div class="flex items-center gap-2.5 flex-shrink-0">
@@ -182,17 +295,14 @@ onUnmounted(() => {
       </button>
 
       <!-- Body -->
-      <Transition name="drawer-slide">
-        <div
-          v-if="showSlate"
-          class="bg-ds-bg-primary border-t border-ds-border/50 overflow-y-auto"
-          style="max-height: 25vh;"
-        >
-          <div class="px-4 py-3">
-            <DraftRosterPanel />
-          </div>
+      <div
+        class="bg-ds-bg-primary border-t border-ds-border/50 overflow-y-auto transition-[max-height] duration-300 ease-in-out"
+        :style="{ maxHeight: showSlate ? '55vh' : '25vh' }"
+      >
+        <div class="px-4 py-3">
+          <DraftRosterPanel />
         </div>
-      </Transition>
+      </div>
     </div>
   </div>
 </template>
@@ -200,17 +310,5 @@ onUnmounted(() => {
 <style scoped>
 .drawer-shadow {
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
-}
-.drawer-slide-enter-active {
-  transition: max-height 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
-}
-.drawer-slide-leave-active {
-  transition: max-height 0.25s cubic-bezier(0.65, 0, 0.35, 1), opacity 0.2s ease;
-}
-.drawer-slide-enter-from,
-.drawer-slide-leave-to {
-  max-height: 0 !important;
-  opacity: 0;
-  overflow: hidden;
 }
 </style>

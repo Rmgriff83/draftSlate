@@ -6,7 +6,7 @@ use App\Models\DraftState;
 use App\Models\LeagueMembership;
 use App\Models\SlatePick;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -30,7 +30,7 @@ class DraftPickMade implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel("draft.{$this->draftState->league_id}"),
+            new PresenceChannel("draft.{$this->draftState->league_id}"),
         ];
     }
 
@@ -49,6 +49,8 @@ class DraftPickMade implements ShouldBroadcast
                 'sport' => $pick->sport,
                 'category' => $pick->category,
                 'player_name' => $pick->player_name,
+                'home_team' => $pick->home_team,
+                'away_team' => $pick->away_team,
                 'game_display' => $pick->game_display,
                 'snapshot_odds' => $pick->snapshot_odds,
                 'drafted_odds' => $this->slatePick->drafted_odds,
