@@ -36,6 +36,7 @@ class LeagueResource extends JsonResource
             'current_week' => $this->current_week,
             'next_draft_at' => $this->getNextDraftTime()?->toIso8601String(),
             'has_active_draft' => $this->draftStates()->where('status', 'active')->exists(),
+            'active_draft_week' => $this->draftStates()->where('status', 'active')->value('week'),
             'member_count' => $this->memberships_count ?? $this->memberships()->count(),
             'commissioner' => [
                 'id' => $this->commissioner->id,

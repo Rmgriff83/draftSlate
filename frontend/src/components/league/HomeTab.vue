@@ -11,6 +11,7 @@ const slate = useSlateStore()
 const league = computed(() => leagueStore.currentLeague)
 const nextDraftAt = computed(() => league.value?.next_draft_at)
 const hasActiveDraft = computed(() => league.value?.has_active_draft || false)
+const activeDraftWeek = computed(() => league.value?.active_draft_week)
 const isCompleted = computed(() => league.value?.state === 'completed')
 const isPlayoffs = computed(() => league.value?.state === 'playoffs')
 
@@ -145,15 +146,21 @@ const sortedStandings = computed(() =>
         <p class="text-sm font-medium text-ds-text-secondary">Season Complete</p>
       </div>
 
-      <!-- Draft is live (countdown expired or active draft in progress) -->
-      <div v-else-if="isLive || hasActiveDraft" class="text-center py-2 space-y-3">
-        <p class="text-lg font-bold text-ds-green animate-pulse">Draft is Live!</p>
+      <!-- Draft is live (active draft confirmed by backend) -->
+      <div v-else-if="hasActiveDraft" class="text-center py-2 space-y-3">
+        <p class="text-lg font-bold text-ds-green animate-pulse">Week {{ activeDraftWeek }} Draft is Live!</p>
         <button
           @click="router.push(`/app/leagues/${league.id}/draft`)"
           class="px-6 py-2.5 text-sm font-semibold text-white bg-ds-primary hover:bg-ds-primary-light rounded-ds-sm transition-colors duration-ds-fast"
         >
           Enter Draft
         </button>
+      </div>
+
+      <!-- Countdown expired but no active draft yet — draft should start soon -->
+      <div v-else-if="isLive" class="text-center py-2 space-y-2">
+        <p class="text-sm font-semibold text-ds-yellow animate-pulse">Draft Starting Soon...</p>
+        <p class="text-xs text-ds-text-tertiary">Waiting for draft to launch</p>
       </div>
 
       <!-- Countdown -->

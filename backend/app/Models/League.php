@@ -161,32 +161,26 @@ class League extends Model
 
         $nextDraftWeek = $latestCompletedWeek + 1;
 
-        if ($nextDraftWeek <= $this->getTotalWeeksIncludingPlayoffs()) {
-            // Check if this week's draft has already started
-            $draftStarted = DraftState::where('league_id', $this->id)
-                ->where('week', $nextDraftWeek)
+        // Find the next draft time starting from the next week that needs a draft
+        for ($n = $nextDraftWeek; $n <= $this->getTotalWeeksIncludingPlayoffs(); $n++) {
+            // Skip weeks that already have an active or completed draft
+            $draftExists = DraftState::where('league_id', $this->id)
+                ->where('week', $n)
                 ->whereIn('status', ['active', 'completed'])
                 ->exists();
 
-            if (!$draftStarted) {
-                // Return this week's draft time even if past —
-                // the frontend will show "Draft is Live!"
-                return Carbon::parse($baseDateStr, $tz)
-                    ->addDays(($nextDraftWeek - 1) * $this->matchup_duration_days)
-                    ->setTime((int) $timeParts[0], (int) $timeParts[1], (int) ($timeParts[2] ?? 0))
-                    ->utc();
+            if ($draftExists) {
+                continue;
             }
-        }
 
-        // Otherwise find the next future draft time after the latest drafted week
-        for ($n = $nextDraftWeek + 1; $n <= $this->getTotalWeeksIncludingPlayoffs(); $n++) {
             $draftDate = Carbon::parse($baseDateStr, $tz)
                 ->addDays(($n - 1) * $this->matchup_duration_days)
                 ->setTime((int) $timeParts[0], (int) $timeParts[1], (int) ($timeParts[2] ?? 0));
 
-            if ($draftDate->gt($now)) {
-                return $draftDate->utc();
-            }
+            // Return past draft times only when the draft hasn't launched yet —
+            // the frontend will show "Draft Starting Soon..."
+            // Return future draft times as countdowns
+            return $draftDate->utc();
         }
 
         return null;

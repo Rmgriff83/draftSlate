@@ -17,6 +17,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class LaunchDraftJob implements ShouldQueue
@@ -43,6 +44,26 @@ class LaunchDraftJob implements ShouldQueue
             return;
         }
 
+        // Atomic lock: prevent concurrent LaunchDraftJob for the same league+week
+        $lock = Cache::lock("launch_draft:{$this->leagueId}:{$this->week}", $this->timeout);
+        if (!$lock->get()) {
+            Log::info("LaunchDraftJob: Another instance already running for league {$this->leagueId} week {$this->week}, skipping");
+            return;
+        }
+
+        try {
+            $this->launchDraft($league, $draftService, $oddsApi, $curationService);
+        } finally {
+            $lock->forceRelease();
+        }
+    }
+
+    private function launchDraft(
+        League $league,
+        DraftService $draftService,
+        OddsApiService $oddsApi,
+        PoolCurationService $curationService,
+    ): void {
         // Guard: don't re-launch if an active/completed draft already exists for this week
         $existingDraft = DraftState::where('league_id', $this->leagueId)
             ->where('week', $this->week)
@@ -173,9 +194,16 @@ class LaunchDraftJob implements ShouldQueue
             return null;
         }
 
-        // Insert curated pick selections
+        // Insert curated pick selections (dedup by external_id for safety)
         $insertData = [];
+        $seenExternalIds = [];
         foreach ($curation['picks'] as $pick) {
+            $extId = $pick['external_id'] ?? '';
+            if (isset($seenExternalIds[$extId])) {
+                continue;
+            }
+            $seenExternalIds[$extId] = true;
+
             $pick['game_time'] = Carbon::parse($pick['game_time']);
             $insertData[] = array_merge($pick, [
                 'slate_pool_id' => $slatePool->id,
@@ -186,7 +214,7 @@ class LaunchDraftJob implements ShouldQueue
 
         if (!empty($insertData)) {
             foreach (array_chunk($insertData, 100) as $chunk) {
-                PickSelection::insert($chunk);
+                PickSelection::insertOrIgnore($chunk);
             }
         }
 

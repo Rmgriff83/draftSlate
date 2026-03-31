@@ -11,12 +11,18 @@ export const useSlateStore = defineStore('slate', () => {
   const myPicks = ref([])
   const myMatchup = ref(null)
   const standings = ref([])
+  const weekMatchups = ref([])
   const currentWeek = ref(1)
   const loading = ref(false)
   const error = ref('')
   const bracketData = ref(null)
   const payoutData = ref(null)
   let channel = null
+
+  // Callbacks for real-time updates in external components (e.g. matchup detail modal)
+  const onScoresUpdated = ref(null)
+  const onPickGraded = ref(null)
+  const onMatchupScored = ref(null)
 
   const starters = computed(() =>
     myPicks.value.filter((p) => p.position === 'starter')
@@ -154,6 +160,15 @@ export const useSlateStore = defineStore('slate', () => {
     }
   }
 
+  async function fetchWeekMatchups(leagueId, week) {
+    try {
+      const res = await api.get(`/api/v1/leagues/${leagueId}/matchups/${week}`)
+      weekMatchups.value = res.data.data || []
+    } catch {
+      weekMatchups.value = []
+    }
+  }
+
   async function refreshOdds(leagueId) {
     try {
       await api.post(`/api/v1/leagues/${leagueId}/slate/refresh-odds`)
@@ -177,6 +192,8 @@ export const useSlateStore = defineStore('slate', () => {
         if (pick && pick.pick_selection) {
           pick.pick_selection.outcome = e.outcome
         }
+        // Notify external listeners (e.g. matchup detail modal)
+        if (onPickGraded.value) onPickGraded.value(e)
       })
       .listen('.ScoresUpdated', (e) => {
         // Merge live score data into local picks
@@ -188,6 +205,8 @@ export const useSlateStore = defineStore('slate', () => {
             pick.pick_selection.result_data = update.result_data
           }
         }
+        // Notify external listeners
+        if (onScoresUpdated.value) onScoresUpdated.value(e)
       })
       .listen('.MatchupScored', (e) => {
         if (myMatchup.value && myMatchup.value.id === e.matchup_id) {
@@ -196,6 +215,16 @@ export const useSlateStore = defineStore('slate', () => {
           myMatchup.value.winner_id = e.winner_id
           myMatchup.value.status = 'completed'
         }
+        // Update weekMatchups card scores
+        const wm = weekMatchups.value.find(m => m.id === e.matchup_id)
+        if (wm) {
+          wm.home_score = e.scores.home
+          wm.away_score = e.scores.away
+          wm.winner_id = e.winner_id
+          wm.status = 'completed'
+        }
+        // Notify external listeners
+        if (onMatchupScored.value) onMatchupScored.value(e)
       })
       .listen('.StandingsUpdated', (e) => {
         const auth = useAuthStore()
@@ -217,17 +246,22 @@ export const useSlateStore = defineStore('slate', () => {
     myPicks.value = []
     myMatchup.value = null
     standings.value = []
+    weekMatchups.value = []
     currentWeek.value = 1
     loading.value = false
     error.value = ''
     bracketData.value = null
     payoutData.value = null
+    onScoresUpdated.value = null
+    onPickGraded.value = null
+    onMatchupScored.value = null
   }
 
   return {
     myPicks,
     myMatchup,
     standings,
+    weekMatchups,
     currentWeek,
     loading,
     error,
@@ -242,8 +276,12 @@ export const useSlateStore = defineStore('slate', () => {
     myScore,
     opponentScore,
     oddsBonus,
+    onScoresUpdated,
+    onPickGraded,
+    onMatchupScored,
     fetchSummary,
     fetchSlate,
+    fetchWeekMatchups,
     fetchBracket,
     fetchPayouts,
     swapPick,

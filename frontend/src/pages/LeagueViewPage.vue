@@ -6,7 +6,7 @@ import { useSlateStore } from '@/stores/slate'
 import { useAuthStore } from '@/stores/auth'
 import MyPicksTab from '@/components/league/MyPicksTab.vue'
 import MatchupTab from '@/components/league/MatchupTab.vue'
-import StandingsTab from '@/components/league/StandingsTab.vue'
+import LeagueTab from '@/components/league/LeagueTab.vue'
 import HomeTab from '@/components/league/HomeTab.vue'
 import PickDetailSheet from '@/components/league/PickDetailSheet.vue'
 import UserDetailSheet from '@/components/league/UserDetailSheet.vue'
@@ -423,7 +423,7 @@ onUnmounted(() => {
                 { key: 'home', label: 'Home' },
                 { key: 'picks', label: 'My Slate' },
                 { key: 'matchup', label: 'Matchup' },
-                { key: 'standings', label: 'Standings' },
+                { key: 'league', label: 'League' },
                 ...(showBracketTab ? [{ key: 'bracket', label: 'Bracket' }] : []),
               ]"
               :key="tab.key"
@@ -449,7 +449,7 @@ onUnmounted(() => {
             <HomeTab v-if="activeTab === 'home'" />
             <MyPicksTab v-else-if="activeTab === 'picks'" @open-detail="openPickDetail" />
             <MatchupTab v-else-if="activeTab === 'matchup'" @open-detail="openPickDetail" />
-            <StandingsTab v-else-if="activeTab === 'standings'" @open-user-detail="openUserDetail" />
+            <LeagueTab v-else-if="activeTab === 'league'" @open-user-detail="openUserDetail" @open-detail="openPickDetail" />
             <BracketTab v-else-if="activeTab === 'bracket'" />
           </template>
         </div>

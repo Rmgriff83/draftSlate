@@ -34,11 +34,15 @@ class MatchupController extends Controller
                         'id' => $matchup->homeTeam->id,
                         'team_name' => $matchup->homeTeam->team_name,
                         'user_name' => $matchup->homeTeam->user->name ?? null,
+                        'user_id' => $matchup->homeTeam->user_id,
+                        'avatar_url' => $matchup->homeTeam->user->avatar_url ?? null,
                     ],
                     'away_team' => [
                         'id' => $matchup->awayTeam->id,
                         'team_name' => $matchup->awayTeam->team_name,
                         'user_name' => $matchup->awayTeam->user->name ?? null,
+                        'user_id' => $matchup->awayTeam->user_id,
+                        'avatar_url' => $matchup->awayTeam->user->avatar_url ?? null,
                     ],
                     'home_score' => $matchup->home_score,
                     'away_score' => $matchup->away_score,
@@ -46,6 +50,51 @@ class MatchupController extends Controller
                     'is_tie' => $matchup->is_tie,
                 ];
             }),
+        ]);
+    }
+
+    public function show(Request $request, League $league, Matchup $matchup): JsonResponse
+    {
+        $user = $request->user();
+        $membership = $league->memberships()->where('user_id', $user->id)->first();
+
+        if (!$membership) {
+            return response()->json(['message' => 'You are not a member of this league.'], 403);
+        }
+
+        if ($matchup->league_id !== $league->id) {
+            return response()->json(['message' => 'Matchup does not belong to this league.'], 404);
+        }
+
+        $matchup->load(['homeTeam.user', 'awayTeam.user']);
+
+        $homePicks = $this->getTeamPicks($matchup->home_team_id, $matchup->week);
+        $awayPicks = $this->getTeamPicks($matchup->away_team_id, $matchup->week);
+
+        return response()->json([
+            'data' => [
+                'id' => $matchup->id,
+                'week' => $matchup->week,
+                'status' => $matchup->status,
+                'home_team' => [
+                    'id' => $matchup->homeTeam->id,
+                    'team_name' => $matchup->homeTeam->team_name,
+                    'user_name' => $matchup->homeTeam->user->name ?? null,
+                    'avatar_url' => $matchup->homeTeam->user->avatar_url ?? null,
+                ],
+                'away_team' => [
+                    'id' => $matchup->awayTeam->id,
+                    'team_name' => $matchup->awayTeam->team_name,
+                    'user_name' => $matchup->awayTeam->user->name ?? null,
+                    'avatar_url' => $matchup->awayTeam->user->avatar_url ?? null,
+                ],
+                'home_score' => $matchup->home_score,
+                'away_score' => $matchup->away_score,
+                'winner_id' => $matchup->winner_id,
+                'is_tie' => $matchup->is_tie,
+                'home_picks' => $homePicks,
+                'away_picks' => $awayPicks,
+            ],
         ]);
     }
 

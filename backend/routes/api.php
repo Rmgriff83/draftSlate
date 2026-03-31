@@ -54,6 +54,7 @@ Route::prefix('v1')->group(function () {
         // Matchups & Standings
         Route::get('/leagues/{league}/matchups/{week}', [MatchupController::class, 'index']);
         Route::get('/leagues/{league}/matchups/{week}/mine', [MatchupController::class, 'mine']);
+        Route::get('/leagues/{league}/matchup/{matchup}', [MatchupController::class, 'show']);
         Route::get('/leagues/{league}/standings', [StandingsController::class, 'index']);
 
         // Headshots & Logos
