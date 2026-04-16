@@ -225,13 +225,13 @@ const oddsWinner = computed(() => {
           <div class="text-center flex-1 flex flex-col items-center">
             <UserAvatar :avatar-url="myTeam?.avatar_url" :name="myTeam?.user_name || myTeamName" size="md" />
             <p class="text-xs text-gray-400 mt-1 truncate max-w-full">{{ myTeamName }}</p>
-            <p class="text-3xl font-black text-white animate-score-pop">{{ slate.myScore }}</p>
+            <p class="text-3xl font-black text-ds-text-primary animate-score-pop">{{ slate.myScore }}</p>
           </div>
           <span class="text-lg text-gray-500 font-bold">&mdash;</span>
           <div class="text-center flex-1 flex flex-col items-center">
             <UserAvatar :avatar-url="opponentTeam?.avatar_url" :name="opponentTeam?.user_name || opponentTeamName" size="md" />
             <p class="text-xs text-gray-400 mt-1 truncate max-w-full">{{ opponentTeamName }}</p>
-            <p class="text-3xl font-black text-white animate-score-pop">{{ slate.opponentScore }}</p>
+            <p class="text-3xl font-black text-ds-text-primary animate-score-pop">{{ slate.opponentScore }}</p>
           </div>
         </div>
 
@@ -302,7 +302,7 @@ const oddsWinner = computed(() => {
               <div class="flex items-center gap-2">
                 <Icon icon="mdi:scale-balance" class="w-5 h-5 text-teal-400 shrink-0" />
                 <div class="flex-1 min-w-0">
-                  <p class="text-xs text-white">Line</p>
+                  <p class="text-xs text-ds-text-primary">Line</p>
                   <p class="text-[10px] text-gray-500 mt-0.5">{{ myLockedStatus.locked }}/{{ myLockedStatus.total }} starters locked</p>
                 </div>
               </div>
@@ -321,7 +321,7 @@ const oddsWinner = computed(() => {
                 </div>
               </template>
               <!-- Pending: show odds value -->
-              <p v-else class="text-[10px] font-mono font-bold mt-1 text-white">
+              <p v-else class="text-[10px] font-mono font-bold mt-1 text-ds-text-primary">
                 {{ myAggregateAmerican != null ? formatOdds(myAggregateAmerican) : '--' }}
               </p>
             </div>
@@ -348,7 +348,7 @@ const oddsWinner = computed(() => {
               <div class="flex items-center gap-2 flex-row-reverse">
                 <Icon icon="mdi:scale-balance" class="w-5 h-5 text-teal-400 shrink-0" />
                 <div class="flex-1 min-w-0">
-                  <p class="text-xs text-white">Line</p>
+                  <p class="text-xs text-ds-text-primary">Line</p>
                   <p class="text-[10px] text-gray-500 mt-0.5">{{ oppLockedStatus.locked }}/{{ oppLockedStatus.total }} starters locked</p>
                 </div>
               </div>
@@ -367,7 +367,7 @@ const oddsWinner = computed(() => {
                 </div>
               </template>
               <!-- Pending: show odds value -->
-              <p v-else class="text-[10px] font-mono font-bold mt-1 text-white">
+              <p v-else class="text-[10px] font-mono font-bold mt-1 text-ds-text-primary">
                 {{ oppAggregateAmerican != null ? formatOdds(oppAggregateAmerican) : '--' }}
               </p>
             </div>
@@ -414,7 +414,7 @@ const oddsWinner = computed(() => {
                 <div class="flex items-start gap-2">
                   <PickImage :pick="row.mine.pick_selection" size="sm" />
                   <div class="flex-1 min-w-0">
-                <p class="text-xs text-white truncate">{{ row.mine.pick_selection?.description }}</p>
+                <p class="text-xs text-ds-text-primary truncate">{{ row.mine.pick_selection?.description }}</p>
                 <p class="text-[10px] text-gray-500 truncate mt-0.5">
                   {{ row.mine.pick_selection?.game_display }}
                   <span v-if="formatGameTime(row.mine.pick_selection?.game_time)"> · {{ formatGameTime(row.mine.pick_selection?.game_time) }}</span>
@@ -422,7 +422,7 @@ const oddsWinner = computed(() => {
                   </div>
                 </div>
                 <!-- Result summary for graded picks -->
-                <p v-if="pickIsGraded(row.mine) && !pickIsLive(row.mine) && pickResultText(row.mine)" class="text-[10px] font-mono text-gray-300 mt-0.5">
+                <p v-if="pickIsGraded(row.mine) && !pickIsLive(row.mine) && pickResultText(row.mine)" class="text-[10px] font-mono text-ds-text-secondary mt-0.5">
                   {{ pickResultText(row.mine) }}
                 </p>
                 <!-- Live score -->
@@ -516,7 +516,7 @@ const oddsWinner = computed(() => {
                 <div class="flex items-start gap-2 flex-row-reverse">
                   <PickImage :pick="row.opponent.pick_selection" size="sm" />
                   <div class="flex-1 min-w-0">
-                <p class="text-xs text-white truncate">{{ row.opponent.pick_selection?.description }}</p>
+                <p class="text-xs text-ds-text-primary truncate">{{ row.opponent.pick_selection?.description }}</p>
                 <p class="text-[10px] text-gray-500 truncate mt-0.5">
                   {{ row.opponent.pick_selection?.game_display }}
                   <span v-if="formatGameTime(row.opponent.pick_selection?.game_time)"> · {{ formatGameTime(row.opponent.pick_selection?.game_time) }}</span>
@@ -524,7 +524,7 @@ const oddsWinner = computed(() => {
                   </div>
                 </div>
                 <!-- Result summary for graded picks -->
-                <p v-if="pickIsGraded(row.opponent) && !pickIsLive(row.opponent) && pickResultText(row.opponent)" class="text-[10px] font-mono text-gray-300 mt-0.5">
+                <p v-if="pickIsGraded(row.opponent) && !pickIsLive(row.opponent) && pickResultText(row.opponent)" class="text-[10px] font-mono text-ds-text-secondary mt-0.5">
                   {{ pickResultText(row.opponent) }}
                 </p>
                 <!-- Live score -->

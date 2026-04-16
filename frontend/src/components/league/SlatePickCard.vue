@@ -122,7 +122,7 @@ const cardClasses = computed(() => {
           />
         </div>
 
-        <p class="text-sm text-white font-medium truncate">{{ ps.description }}</p>
+        <p class="text-sm text-ds-text-primary font-medium truncate">{{ ps.description }}</p>
 
         <!-- Game display + game status / result -->
         <div class="flex items-center gap-2">
@@ -139,7 +139,7 @@ const cardClasses = computed(() => {
           </template>
           <template v-else-if="isGraded && resultText">
             <span class="text-[10px] text-gray-500">·</span>
-            <span class="text-xs font-mono text-gray-300">{{ resultText }}</span>
+            <span class="text-xs font-mono text-ds-text-secondary">{{ resultText }}</span>
           </template>
         </div>
       </div>

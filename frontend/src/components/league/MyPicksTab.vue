@@ -24,7 +24,7 @@ const startersByType = computed(() => {
   <div class="space-y-4">
     <!-- Status line -->
     <div class="ds-card p-3">
-      <p class="text-sm text-gray-300 text-center">
+      <p class="text-sm text-ds-text-secondary text-center">
         {{ slate.statusLine }}
       </p>
     </div>

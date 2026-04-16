@@ -90,10 +90,10 @@ onMounted(() => {
           <div class="flex items-center gap-2 mb-3">
             <Icon
               :icon="sportIcons[pick.sport] || 'mdi:trophy'"
-              :class="['w-6 h-6', sportIconColors[pick.sport] || 'text-gray-400']"
+              :class="['w-6 h-6', sportIconColors[pick.sport] || 'text-ds-text-tertiary']"
             />
             <h3 class="text-lg font-bold text-ds-text-primary flex-1">Pick Study</h3>
-            <button @click="emit('close')" class="text-gray-400 hover:text-white p-1">
+            <button @click="emit('close')" class="text-ds-text-tertiary hover:text-ds-text-primary p-1">
               <Icon icon="mdi:close" class="w-5 h-5" />
             </button>
           </div>
@@ -113,7 +113,7 @@ onMounted(() => {
                   @error="headshotUrl = null"
                 />
                 <div v-else class="w-12 h-12 rounded-full bg-ds-bg-primary flex items-center justify-center">
-                  <Icon icon="mdi:account" class="w-7 h-7 text-gray-600" />
+                  <Icon icon="mdi:account" class="w-7 h-7 text-ds-text-tertiary" />
                 </div>
               </div>
 
@@ -127,9 +127,9 @@ onMounted(() => {
                   @error="awayLogoUrl = null"
                 />
                 <div v-else class="w-8 h-8 rounded bg-ds-bg-primary flex items-center justify-center">
-                  <Icon icon="mdi:shield-outline" class="w-5 h-5 text-gray-600" />
+                  <Icon icon="mdi:shield-outline" class="w-5 h-5 text-ds-text-tertiary" />
                 </div>
-                <span class="text-[10px] text-gray-500 font-bold">vs</span>
+                <span class="text-[10px] text-ds-text-tertiary font-bold">vs</span>
                 <img
                   v-if="homeLogoUrl"
                   :src="homeLogoUrl"
@@ -138,32 +138,32 @@ onMounted(() => {
                   @error="homeLogoUrl = null"
                 />
                 <div v-else class="w-8 h-8 rounded bg-ds-bg-primary flex items-center justify-center">
-                  <Icon icon="mdi:shield-outline" class="w-5 h-5 text-gray-600" />
+                  <Icon icon="mdi:shield-outline" class="w-5 h-5 text-ds-text-tertiary" />
                 </div>
               </div>
 
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2 mb-2">
                   <span
-                    :class="['text-xs font-bold px-2 py-0.5 rounded', typeBadgeClasses[pick.pick_type] || 'bg-gray-600 text-gray-300']"
+                    :class="['text-xs font-bold px-2 py-0.5 rounded', typeBadgeClasses[pick.pick_type] || 'bg-ds-bg-hover text-ds-text-secondary']"
                   >
                     {{ typeLabels[pick.pick_type] || pick.pick_type }}
                   </span>
-                  <span v-if="pick.category" class="text-xs text-gray-400">{{ pick.category }}</span>
+                  <span v-if="pick.category" class="text-xs text-ds-text-tertiary">{{ pick.category }}</span>
                 </div>
 
-                <p class="text-base font-semibold text-white mb-1">{{ pick.description }}</p>
-                <p class="text-sm text-gray-400">{{ pick.game_display }}</p>
+                <p class="text-base font-semibold text-ds-text-primary mb-1">{{ pick.description }}</p>
+                <p class="text-sm text-ds-text-tertiary">{{ pick.game_display }}</p>
 
                 <div class="flex items-center gap-4 mt-3">
                   <div>
-                    <p class="text-[10px] text-gray-500 uppercase">Snapshot</p>
+                    <p class="text-[10px] text-ds-text-tertiary uppercase">Snapshot</p>
                     <p :class="['text-sm font-mono font-bold', oddsColor(pick.snapshot_odds)]">
                       {{ formatOdds(pick.snapshot_odds) }}
                     </p>
                   </div>
                   <div v-if="pick.current_odds && pick.current_odds !== pick.snapshot_odds">
-                    <p class="text-[10px] text-gray-500 uppercase">Current</p>
+                    <p class="text-[10px] text-ds-text-tertiary uppercase">Current</p>
                     <p :class="['text-sm font-mono font-bold', oddsColor(pick.current_odds)]">
                       {{ formatOdds(pick.current_odds) }}
                     </p>
@@ -219,19 +219,19 @@ onMounted(() => {
                 <div class="ds-card bg-ds-bg-hover p-3 mb-3">
                   <div class="flex items-center justify-between">
                     <div>
-                      <span class="text-2xl font-black text-white">{{ studyData.hit_count }}/{{ studyData.games_count }}</span>
-                      <span class="text-sm text-gray-400 ml-2">
+                      <span class="text-2xl font-black text-ds-text-primary">{{ studyData.hit_count }}/{{ studyData.games_count }}</span>
+                      <span class="text-sm text-ds-text-tertiary ml-2">
                         {{ studyData.side?.toLowerCase() }} {{ studyData.threshold }}
                       </span>
                     </div>
                     <div class="text-right">
-                      <p class="text-lg font-bold text-white">{{ studyData.average }}</p>
-                      <p class="text-[10px] text-gray-500 uppercase">avg {{ studyData.stat_label }}</p>
+                      <p class="text-lg font-bold text-ds-text-primary">{{ studyData.average }}</p>
+                      <p class="text-[10px] text-ds-text-tertiary uppercase">avg {{ studyData.stat_label }}</p>
                     </div>
                   </div>
 
                   <!-- Hit rate bar -->
-                  <div class="mt-2 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                  <div class="mt-2 h-1.5 bg-ds-border rounded-full overflow-hidden">
                     <div
                       class="h-full rounded-full transition-all"
                       :class="studyData.hit_count / studyData.games_count >= 0.6 ? 'bg-green-500' : studyData.hit_count / studyData.games_count >= 0.4 ? 'bg-yellow-500' : 'bg-red-500'"
@@ -253,10 +253,10 @@ onMounted(() => {
                   <table class="w-full text-xs">
                     <thead>
                       <tr class="border-b border-ds-border">
-                        <th class="text-left text-gray-500 font-medium px-3 py-2">Date</th>
-                        <th class="text-left text-gray-500 font-medium px-3 py-2">OPP</th>
-                        <th class="text-right text-gray-500 font-medium px-3 py-2">{{ studyData.stat_label }}</th>
-                        <th class="text-right text-gray-500 font-medium px-3 py-2">W/L</th>
+                        <th class="text-left text-ds-text-tertiary font-medium px-3 py-2">Date</th>
+                        <th class="text-left text-ds-text-tertiary font-medium px-3 py-2">OPP</th>
+                        <th class="text-right text-ds-text-tertiary font-medium px-3 py-2">{{ studyData.stat_label }}</th>
+                        <th class="text-right text-ds-text-tertiary font-medium px-3 py-2">W/L</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -265,15 +265,15 @@ onMounted(() => {
                         :key="i"
                         class="border-b border-ds-border/30 last:border-0"
                       >
-                        <td class="px-3 py-2 text-gray-400">{{ game.date }}</td>
-                        <td class="px-3 py-2 text-gray-300 font-medium">{{ game.opponent }}</td>
+                        <td class="px-3 py-2 text-ds-text-tertiary">{{ game.date }}</td>
+                        <td class="px-3 py-2 text-ds-text-secondary font-medium">{{ game.opponent }}</td>
                         <td
                           class="px-3 py-2 text-right font-bold font-mono"
                           :class="game.hit ? 'text-green-400' : 'text-red-400'"
                         >
                           {{ game.stat_value }}
                         </td>
-                        <td class="px-3 py-2 text-right text-gray-500">{{ game.result }}</td>
+                        <td class="px-3 py-2 text-right text-ds-text-tertiary">{{ game.result }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -282,9 +282,9 @@ onMounted(() => {
 
               <!-- Stats not available -->
               <div v-else class="flex flex-col items-center justify-center h-[200px] text-center">
-                <Icon icon="mdi:chart-bar-stacked" class="w-10 h-10 text-gray-600 mb-2" />
-                <p class="text-sm text-gray-400">Game log stats not available</p>
-                <p class="text-xs text-gray-500 mt-1">for this pick type</p>
+                <Icon icon="mdi:chart-bar-stacked" class="w-10 h-10 text-ds-text-tertiary mb-2" />
+                <p class="text-sm text-ds-text-secondary">Game log stats not available</p>
+                <p class="text-xs text-ds-text-tertiary mt-1">for this pick type</p>
               </div>
             </template>
 
@@ -321,7 +321,7 @@ onMounted(() => {
               :disabled="draft.loading || wouldBustPick"
               class="w-full px-4 py-3 text-sm font-semibold text-white rounded-ds-sm transition-colors"
               :class="wouldBustPick
-                ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                ? 'bg-ds-bg-hover cursor-not-allowed opacity-50'
                 : 'bg-ds-green hover:bg-green-600'"
             >
               {{ draft.loading ? 'Picking...' : 'Draft This Pick' }}

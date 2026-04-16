@@ -230,7 +230,7 @@ function handleMove(target) {
             :class="['w-6 h-6', sportIconColors[ps.sport] || 'text-gray-400']"
           />
           <h3 class="text-lg font-bold text-ds-text-primary flex-1">Pick Details</h3>
-          <button @click="emit('close')" class="text-gray-400 hover:text-white">
+          <button @click="emit('close')" class="text-gray-400 hover:text-ds-text-primary">
             <Icon icon="mdi:close" class="w-5 h-5" />
           </button>
         </div>
@@ -290,13 +290,13 @@ function handleMove(target) {
                 </span>
               </div>
 
-              <p class="text-base font-semibold text-white mb-1">{{ ps.description }}</p>
+              <p class="text-base font-semibold text-ds-text-primary mb-1">{{ ps.description }}</p>
               <p class="text-sm text-gray-400">{{ ps.game_display }}</p>
               <p v-if="formatGameTime(ps.game_time)" class="text-xs text-gray-500 mt-0.5">{{ formatGameTime(ps.game_time) }}</p>
 
               <div v-if="ps.player_name" class="mt-2">
                 <span class="text-xs text-gray-500">Player:</span>
-                <span class="text-sm text-gray-300 ml-1">{{ ps.player_name }}</span>
+                <span class="text-sm text-ds-text-secondary ml-1">{{ ps.player_name }}</span>
               </div>
             </div>
           </div>
@@ -374,13 +374,13 @@ function handleMove(target) {
               <div class="ds-card bg-ds-bg-hover p-3 mb-3">
                 <div class="flex items-center justify-between">
                   <div>
-                    <span class="text-2xl font-black text-white">{{ studyData.hit_count }}/{{ studyData.games_count }}</span>
+                    <span class="text-2xl font-black text-ds-text-primary">{{ studyData.hit_count }}/{{ studyData.games_count }}</span>
                     <span class="text-sm text-gray-400 ml-2">
                       {{ studyData.side?.toLowerCase() }} {{ studyData.threshold }}
                     </span>
                   </div>
                   <div class="text-right">
-                    <p class="text-lg font-bold text-white">{{ studyData.average }}</p>
+                    <p class="text-lg font-bold text-ds-text-primary">{{ studyData.average }}</p>
                     <p class="text-[10px] text-gray-500 uppercase">avg {{ studyData.stat_label }}</p>
                   </div>
                 </div>
@@ -420,7 +420,7 @@ function handleMove(target) {
                       class="border-b border-ds-border/30 last:border-0"
                     >
                       <td class="px-3 py-2 text-gray-400">{{ game.date }}</td>
-                      <td class="px-3 py-2 text-gray-300 font-medium">{{ game.opponent }}</td>
+                      <td class="px-3 py-2 text-ds-text-secondary font-medium">{{ game.opponent }}</td>
                       <td
                         class="px-3 py-2 text-right font-bold font-mono"
                         :class="game.hit ? 'text-green-400' : 'text-red-400'"
@@ -457,7 +457,7 @@ function handleMove(target) {
           <div class="flex items-center justify-center gap-4 mb-3">
             <div class="text-center flex-1">
               <p class="text-[10px] text-gray-500 mb-0.5 truncate">{{ gameScore.awayTeam }}</p>
-              <p class="text-2xl font-black text-white">{{ gameScore.away }}</p>
+              <p class="text-2xl font-black text-ds-text-primary">{{ gameScore.away }}</p>
             </div>
             <div class="text-center">
               <span class="text-xs text-gray-600 font-bold">&mdash;</span>
@@ -466,7 +466,7 @@ function handleMove(target) {
             </div>
             <div class="text-center flex-1">
               <p class="text-[10px] text-gray-500 mb-0.5 truncate">{{ gameScore.homeTeam }}</p>
-              <p class="text-2xl font-black text-white">{{ gameScore.home }}</p>
+              <p class="text-2xl font-black text-ds-text-primary">{{ gameScore.home }}</p>
             </div>
           </div>
 
@@ -476,7 +476,7 @@ function handleMove(target) {
               <!-- Key stat vs line -->
               <div class="flex items-center justify-between mb-2">
                 <span class="text-xs text-gray-400">{{ ps.player_name }}</span>
-                <span class="text-sm font-bold text-white">
+                <span class="text-sm font-bold text-ds-text-primary">
                   {{ currentStat }}
                   <span v-if="propLine != null" class="text-gray-500 font-normal">/ {{ propLine }}</span>
                   <span class="text-xs text-gray-500 font-normal ml-1">{{ statLabel }}</span>
@@ -506,19 +506,19 @@ function handleMove(target) {
               <div v-if="playerStats" class="grid grid-cols-5 gap-1 text-center">
                 <div>
                   <p class="text-[10px] text-gray-500">PTS</p>
-                  <p :class="['text-xs font-semibold', statLabel === 'points' ? 'text-white' : 'text-gray-400']">{{ playerStats.points }}</p>
+                  <p :class="['text-xs font-semibold', statLabel === 'points' ? 'text-ds-text-primary' : 'text-gray-400']">{{ playerStats.points }}</p>
                 </div>
                 <div>
                   <p class="text-[10px] text-gray-500">REB</p>
-                  <p :class="['text-xs font-semibold', statLabel === 'rebounds' ? 'text-white' : 'text-gray-400']">{{ playerStats.rebounds }}</p>
+                  <p :class="['text-xs font-semibold', statLabel === 'rebounds' ? 'text-ds-text-primary' : 'text-gray-400']">{{ playerStats.rebounds }}</p>
                 </div>
                 <div>
                   <p class="text-[10px] text-gray-500">AST</p>
-                  <p :class="['text-xs font-semibold', statLabel === 'assists' ? 'text-white' : 'text-gray-400']">{{ playerStats.assists }}</p>
+                  <p :class="['text-xs font-semibold', statLabel === 'assists' ? 'text-ds-text-primary' : 'text-gray-400']">{{ playerStats.assists }}</p>
                 </div>
                 <div>
                   <p class="text-[10px] text-gray-500">3PT</p>
-                  <p :class="['text-xs font-semibold', statLabel === 'threes' ? 'text-white' : 'text-gray-400']">{{ playerStats.threes }}</p>
+                  <p :class="['text-xs font-semibold', statLabel === 'threes' ? 'text-ds-text-primary' : 'text-gray-400']">{{ playerStats.threes }}</p>
                 </div>
                 <div>
                   <p class="text-[10px] text-gray-500">MIN</p>
@@ -532,7 +532,7 @@ function handleMove(target) {
           <template v-else-if="ps.pick_type === 'total' && gameScore">
             <div class="border-t border-gray-700 pt-2 text-center">
               <span class="text-xs text-gray-400">Total: </span>
-              <span class="text-sm font-bold text-white">{{ gameScore.away + gameScore.home }}</span>
+              <span class="text-sm font-bold text-ds-text-primary">{{ gameScore.away + gameScore.home }}</span>
               <span v-if="propLine != null" class="text-xs text-gray-500 ml-1">/ {{ propLine }}</span>
             </div>
           </template>
@@ -541,7 +541,7 @@ function handleMove(target) {
           <template v-else-if="ps.pick_type === 'spread' && gameScore">
             <div class="border-t border-gray-700 pt-2 text-center">
               <span class="text-xs text-gray-400">Margin: </span>
-              <span class="text-sm font-bold text-white">
+              <span class="text-sm font-bold text-ds-text-primary">
                 {{ Math.abs(gameScore.home - gameScore.away) }}
                 <span class="text-xs text-gray-500 font-normal">
                   ({{ gameScore.home > gameScore.away ? gameScore.homeTeam : gameScore.awayTeam }})
@@ -616,7 +616,7 @@ function handleMove(target) {
                 :class="['w-5 h-5 flex-shrink-0', target.primary ? 'text-ds-primary' : 'text-gray-400']"
               />
               <div class="flex-1 min-w-0">
-                <p :class="['text-sm font-medium', target.primary ? 'text-ds-primary' : 'text-white']">
+                <p :class="['text-sm font-medium', target.primary ? 'text-ds-primary' : 'text-ds-text-primary']">
                   {{ target.label }}
                 </p>
                 <p v-if="target.sublabel" class="text-xs text-gray-500 truncate">{{ target.sublabel }}</p>

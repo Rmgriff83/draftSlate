@@ -1,39 +1,60 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ===================================================================
+   DraftSlate Design Tokens — CSS Custom Properties
+   See draftslate-design.md for the full palette reference.
+   :root = light mode, .dark = dark mode (default).
+   =================================================================== */
+
 :root {
-  /* Core Brand */
-  --ds-primary: #6C3FE0;
-  --ds-primary-light: #8B6CE6;
-  --ds-primary-dark: #4A1FB8;
+  /* Surfaces */
+  --ds-bg-primary:        #E8ECED;
+  --ds-bg-surface:        #FFFFFF;
+  --ds-bg-surface-raised: #F3F5F6;
+  --ds-bg-teal-deep:      #CCFBF1;
+  --ds-bg-teal-wash:      #E6FAF8;
 
-  /* Accent */
-  --ds-accent-green: #00D26A;
-  --ds-accent-red: #FF3B5C;
-  --ds-accent-gold: #FFB800;
-  --ds-accent-blue: #2B7FFF;
-
-  /* Surfaces (dark mode) */
-  --ds-bg-primary: #0D0F14;
-  --ds-bg-secondary: #161A22;
-  --ds-bg-tertiary: #1E232E;
-  --ds-bg-hover: #252B38;
+  /* Brand */
+  --ds-teal-primary:      #0D9488;
+  --ds-teal-highlight:    #2DD4BF;
 
   /* Text */
-  --ds-text-primary: #FFFFFF;
-  --ds-text-secondary: #8E95A8;
-  --ds-text-tertiary: #5A6178;
+  --ds-text-primary:      #18181B;
+  --ds-text-secondary:    #6B7280;
+  --ds-text-tertiary:     #9CA3AF;
+  --ds-text-teal:         #0D9488;
 
   /* Borders */
-  --ds-border: #2A2F3D;
-  --ds-overlay: rgba(0, 0, 0, 0.6);
+  --ds-border-default:    #C8CDD5;
+  --ds-border-teal:       #0D9488;
+  --ds-border-subtle:     #D1D5DB;
+
+  /* States */
+  --ds-success:           #16A34A;
+  --ds-success-bg:        #DCFCE7;
+  --ds-danger:            #DC2626;
+  --ds-danger-bg:         #FEE2E2;
+  --ds-warning:           #D97706;
+  --ds-warning-bg:        #FEF3C7;
+  --ds-pending:           #9CA3AF;
+  --ds-locked:            #E4E4E7;
+
+  /* Shadows */
+  --ds-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --ds-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --ds-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --ds-shadow-glow: 0 0 20px rgba(13, 148, 136, 0.2);
+  --ds-shadow-hit: 0 0 16px rgba(22, 163, 74, 0.3);
+  --ds-shadow-miss: 0 0 16px rgba(220, 38, 38, 0.3);
+  --ds-overlay: rgba(0, 0, 0, 0.3);
 
   /* Typography */
-  --ds-font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --ds-font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --ds-font-primary: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ds-font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
 
   /* Animation Durations */
   --ds-anim-fast: 150ms;
@@ -64,19 +85,55 @@
   --ds-radius-lg: 16px;
   --ds-radius-xl: 24px;
   --ds-radius-full: 9999px;
+}
 
-  /* Shadows */
+.dark {
+  /* Surfaces */
+  --ds-bg-primary:        #18181B;
+  --ds-bg-surface:        #27272A;
+  --ds-bg-surface-raised: #3F3F46;
+  --ds-bg-teal-deep:      #134E4A;
+  --ds-bg-teal-wash:      #0D2320;
+
+  /* Brand — unchanged */
+  --ds-teal-primary:      #0D9488;
+  --ds-teal-highlight:    #2DD4BF;
+
+  /* Text */
+  --ds-text-primary:      #FAFAFA;
+  --ds-text-secondary:    #A1A1AA;
+  --ds-text-tertiary:     #71717A;
+  --ds-text-teal:         #2DD4BF;
+
+  /* Borders */
+  --ds-border-default:    #3F3F46;
+  --ds-border-teal:       #0D9488;
+  --ds-border-subtle:     #27272A;
+
+  /* States */
+  --ds-success:           #22C55E;
+  --ds-success-bg:        #052E16;
+  --ds-danger:            #EF4444;
+  --ds-danger-bg:         #3F0A0A;
+  --ds-warning:           #F59E0B;
+  --ds-warning-bg:        #2D1A00;
+  --ds-pending:           #A1A1AA;
+  --ds-locked:            #3F3F46;
+
+  /* Shadows — deeper for dark mode */
   --ds-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
   --ds-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --ds-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --ds-shadow-glow: 0 0 20px rgba(108, 63, 224, 0.3);
-  --ds-shadow-hit: 0 0 16px rgba(0, 210, 106, 0.4);
-  --ds-shadow-miss: 0 0 16px rgba(255, 59, 92, 0.4);
+  --ds-shadow-glow: 0 0 20px rgba(13, 148, 136, 0.3);
+  --ds-shadow-hit: 0 0 16px rgba(34, 197, 94, 0.4);
+  --ds-shadow-miss: 0 0 16px rgba(239, 68, 68, 0.4);
+  --ds-overlay: rgba(0, 0, 0, 0.6);
 }
 
 @layer base {
   body {
     @apply bg-ds-bg-primary text-ds-text-primary font-sans antialiased;
+    transition: background-color 200ms ease, color 200ms ease;
   }
 }
 

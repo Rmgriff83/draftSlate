@@ -106,7 +106,7 @@ function medalIcon(pos) {
         <div
           :class="[
             'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0',
-            member.is_current_user ? 'bg-ds-primary text-white' : 'bg-ds-bg-hover text-gray-300',
+            member.is_current_user ? 'bg-ds-primary text-white' : 'bg-ds-bg-hover text-ds-text-secondary',
           ]"
         >
           {{ (member.team_name || '?')[0].toUpperCase() }}
@@ -125,7 +125,7 @@ function medalIcon(pos) {
           <p
             :class="[
               'text-sm font-medium truncate',
-              member.is_current_user ? 'text-white' : 'text-gray-200',
+              member.is_current_user ? 'text-ds-text-primary' : 'text-ds-text-primary',
             ]"
           >
             {{ member.team_name }}
@@ -135,7 +135,7 @@ function medalIcon(pos) {
 
         <!-- Record -->
         <div class="text-right flex-shrink-0">
-          <p class="text-sm font-mono text-gray-200">
+          <p class="text-sm font-mono text-ds-text-primary">
             {{ member.wins }}-{{ member.losses }}<span v-if="member.ties > 0">-{{ member.ties }}</span>
           </p>
           <p class="text-[10px] text-gray-500">

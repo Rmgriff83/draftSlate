@@ -43,7 +43,7 @@ const isCompleted = computed(() => props.matchup.status === 'completed')
           :name="matchup.home_team?.user_name || matchup.home_team?.team_name"
           size="sm"
         />
-        <p class="text-xs font-medium text-gray-200 truncate">
+        <p class="text-xs font-medium text-ds-text-primary truncate">
           {{ matchup.home_team?.team_name }}
         </p>
       </div>
@@ -51,11 +51,11 @@ const isCompleted = computed(() => props.matchup.status === 'completed')
       <!-- Score / vs -->
       <div class="flex-shrink-0 text-center min-w-[56px]">
         <template v-if="hasScores">
-          <span class="text-sm font-bold text-white">
+          <span class="text-sm font-bold text-ds-text-primary">
             {{ matchup.home_score }}
           </span>
           <span class="text-xs text-gray-500 mx-1">&ndash;</span>
-          <span class="text-sm font-bold text-white">
+          <span class="text-sm font-bold text-ds-text-primary">
             {{ matchup.away_score }}
           </span>
         </template>
@@ -76,7 +76,7 @@ const isCompleted = computed(() => props.matchup.status === 'completed')
 
       <!-- Away team -->
       <div class="flex-1 flex items-center gap-2 min-w-0 justify-end">
-        <p class="text-xs font-medium text-gray-200 truncate text-right">
+        <p class="text-xs font-medium text-ds-text-primary truncate text-right">
           {{ matchup.away_team?.team_name }}
         </p>
         <UserAvatar

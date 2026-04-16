@@ -92,7 +92,7 @@ const hitPct = computed(() => {
             </div>
             <p class="text-xs text-ds-text-tertiary truncate">{{ member.user_name }}</p>
           </div>
-          <button @click="emit('close')" class="text-gray-400 hover:text-white flex-shrink-0">
+          <button @click="emit('close')" class="text-gray-400 hover:text-ds-text-primary flex-shrink-0">
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -104,19 +104,19 @@ const hitPct = computed(() => {
           <h4 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">League Record</h4>
           <div class="grid grid-cols-4 gap-3 text-center">
             <div>
-              <p class="text-lg font-bold text-white font-mono">{{ record }}</p>
+              <p class="text-lg font-bold text-ds-text-primary font-mono">{{ record }}</p>
               <p class="text-[10px] text-gray-500 uppercase">Record</p>
             </div>
             <div>
-              <p class="text-lg font-bold text-white font-mono">{{ winPct }}</p>
+              <p class="text-lg font-bold text-ds-text-primary font-mono">{{ winPct }}</p>
               <p class="text-[10px] text-gray-500 uppercase">Win %</p>
             </div>
             <div>
-              <p class="text-lg font-bold text-white font-mono">{{ member.rank || '—' }}</p>
+              <p class="text-lg font-bold text-ds-text-primary font-mono">{{ member.rank || '—' }}</p>
               <p class="text-[10px] text-gray-500 uppercase">Rank</p>
             </div>
             <div>
-              <p class="text-lg font-bold text-white font-mono">{{ member.playoff_seed || '—' }}</p>
+              <p class="text-lg font-bold text-ds-text-primary font-mono">{{ member.playoff_seed || '—' }}</p>
               <p class="text-[10px] text-gray-500 uppercase">Seed</p>
             </div>
           </div>
@@ -126,7 +126,7 @@ const hitPct = computed(() => {
         <div class="ds-card bg-ds-bg-hover p-4 mb-4">
           <div class="flex items-center justify-between">
             <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">League Correct Picks</span>
-            <span class="text-lg font-bold text-white font-mono">{{ member.total_correct_picks ?? 0 }}</span>
+            <span class="text-lg font-bold text-ds-text-primary font-mono">{{ member.total_correct_picks ?? 0 }}</span>
           </div>
         </div>
 
@@ -149,11 +149,11 @@ const hitPct = computed(() => {
             <!-- Hit rate -->
             <div class="mb-4">
               <div class="flex items-center justify-between mb-1.5">
-                <span class="text-sm text-gray-300">
-                  <span class="text-lg font-black text-white">{{ career.career_picks_hit }}</span>
+                <span class="text-sm text-ds-text-secondary">
+                  <span class="text-lg font-black text-ds-text-primary">{{ career.career_picks_hit }}</span>
                   <span class="text-gray-500">/{{ career.career_picks_graded }}</span>
                 </span>
-                <span class="text-sm font-bold text-white">{{ hitPct }}</span>
+                <span class="text-sm font-bold text-ds-text-primary">{{ hitPct }}</span>
               </div>
               <div class="h-1.5 bg-gray-700 rounded-full overflow-hidden">
                 <div
@@ -168,34 +168,34 @@ const hitPct = computed(() => {
             <div v-if="hasMedals" class="flex items-center justify-center gap-4 mb-4 pt-3 border-t border-gray-700/50">
               <div v-if="career.career_gold_medals > 0" class="flex items-center gap-1">
                 <span class="text-yellow-400 text-sm font-bold">1st</span>
-                <span class="text-sm font-bold text-white">{{ career.career_gold_medals }}</span>
+                <span class="text-sm font-bold text-ds-text-primary">{{ career.career_gold_medals }}</span>
               </div>
               <div v-if="career.career_silver_medals > 0" class="flex items-center gap-1">
                 <span class="text-gray-300 text-sm font-bold">2nd</span>
-                <span class="text-sm font-bold text-white">{{ career.career_silver_medals }}</span>
+                <span class="text-sm font-bold text-ds-text-primary">{{ career.career_silver_medals }}</span>
               </div>
               <div v-if="career.career_bronze_medals > 0" class="flex items-center gap-1">
                 <span class="text-amber-600 text-sm font-bold">3rd</span>
-                <span class="text-sm font-bold text-white">{{ career.career_bronze_medals }}</span>
+                <span class="text-sm font-bold text-ds-text-primary">{{ career.career_bronze_medals }}</span>
               </div>
             </div>
 
             <!-- Type breakdown -->
             <div class="grid grid-cols-4 gap-3 text-center">
               <div>
-                <p class="text-lg font-bold text-white font-mono">{{ career.career_moneyline_hits }}</p>
+                <p class="text-lg font-bold text-ds-text-primary font-mono">{{ career.career_moneyline_hits }}</p>
                 <p class="text-[10px] text-gray-500 uppercase">ML</p>
               </div>
               <div>
-                <p class="text-lg font-bold text-white font-mono">{{ career.career_spread_hits }}</p>
+                <p class="text-lg font-bold text-ds-text-primary font-mono">{{ career.career_spread_hits }}</p>
                 <p class="text-[10px] text-gray-500 uppercase">Spread</p>
               </div>
               <div>
-                <p class="text-lg font-bold text-white font-mono">{{ career.career_total_hits }}</p>
+                <p class="text-lg font-bold text-ds-text-primary font-mono">{{ career.career_total_hits }}</p>
                 <p class="text-[10px] text-gray-500 uppercase">Total</p>
               </div>
               <div>
-                <p class="text-lg font-bold text-white font-mono">{{ career.career_player_prop_hits }}</p>
+                <p class="text-lg font-bold text-ds-text-primary font-mono">{{ career.career_player_prop_hits }}</p>
                 <p class="text-[10px] text-gray-500 uppercase">Prop</p>
               </div>
             </div>

@@ -9,30 +9,56 @@ export default {
     extend: {
       colors: {
         ds: {
-          primary: '#6C3FE0',
-          'primary-light': '#8B6CE6',
-          'primary-dark': '#4A1FB8',
-          green: '#00D26A',
-          red: '#FF3B5C',
+          // Brand — mapped to CSS vars (same in both modes)
+          primary: 'var(--ds-teal-primary)',
+          'primary-light': 'var(--ds-teal-highlight)',
+          'primary-dark': 'var(--ds-teal-primary)',
+          'teal-primary': 'var(--ds-teal-primary)',
+          'teal-highlight': 'var(--ds-teal-highlight)',
+
+          // Semantic states — mode-aware via CSS vars
+          green: 'var(--ds-success)',
+          red: 'var(--ds-danger)',
+          yellow: 'var(--ds-warning)',
           gold: '#FFB800',
-          blue: '#2B7FFF',
+          success: 'var(--ds-success)',
+          'success-bg': 'var(--ds-success-bg)',
+          danger: 'var(--ds-danger)',
+          'danger-bg': 'var(--ds-danger-bg)',
+          warning: 'var(--ds-warning)',
+          'warning-bg': 'var(--ds-warning-bg)',
+          pending: 'var(--ds-pending)',
+          locked: 'var(--ds-locked)',
+
+          // Surfaces — mode-aware via CSS vars
           bg: {
-            primary: '#0D0F14',
-            secondary: '#161A22',
-            tertiary: '#1E232E',
-            hover: '#252B38',
+            primary: 'var(--ds-bg-primary)',
+            secondary: 'var(--ds-bg-surface)',
+            tertiary: 'var(--ds-bg-surface-raised)',
+            hover: 'var(--ds-bg-surface-raised)',
+            surface: 'var(--ds-bg-surface)',
+            'surface-raised': 'var(--ds-bg-surface-raised)',
+            'teal-deep': 'var(--ds-bg-teal-deep)',
+            'teal-wash': 'var(--ds-bg-teal-wash)',
           },
+
+          // Text — mode-aware via CSS vars
           text: {
-            primary: '#FFFFFF',
-            secondary: '#8E95A8',
-            tertiary: '#5A6178',
+            primary: 'var(--ds-text-primary)',
+            secondary: 'var(--ds-text-secondary)',
+            tertiary: 'var(--ds-text-tertiary)',
+            teal: 'var(--ds-text-teal)',
           },
-          border: '#2A2F3D',
+
+          // Borders — mode-aware via CSS vars
+          border: 'var(--ds-border-default)',
+          'border-teal': 'var(--ds-border-teal)',
+          'border-subtle': 'var(--ds-border-subtle)',
         },
       },
       fontFamily: {
-        sans: ['Inter', ...defaultTheme.fontFamily.sans],
-        mono: ['JetBrains Mono', ...defaultTheme.fontFamily.mono],
+        sans: ['DM Sans', 'Inter', ...defaultTheme.fontFamily.sans],
+        mono: ['JetBrains Mono', 'Fira Code', ...defaultTheme.fontFamily.mono],
       },
       borderRadius: {
         ds: '12px',
@@ -44,11 +70,11 @@ export default {
         'ds-sm': '0 1px 3px rgba(0, 0, 0, 0.3)',
         'ds-md': '0 4px 12px rgba(0, 0, 0, 0.4)',
         'ds-lg': '0 8px 24px rgba(0, 0, 0, 0.5)',
-        'ds-glow': '0 0 20px rgba(108, 63, 224, 0.3)',
-        'ds-hit': '0 0 16px rgba(0, 210, 106, 0.4)',
-        'ds-miss': '0 0 16px rgba(255, 59, 92, 0.4)',
-        'ds-live': '0 0 12px rgba(0, 210, 106, 0.4), 0 0 0 1px rgba(0, 210, 106, 0.3)',
-        'ds-live-bright': '0 0 24px rgba(0, 210, 106, 0.7), 0 0 0 2px rgba(0, 210, 106, 0.5)',
+        'ds-glow': '0 0 20px rgba(13, 148, 136, 0.3)',
+        'ds-hit': '0 0 16px rgba(34, 197, 94, 0.4)',
+        'ds-miss': '0 0 16px rgba(239, 68, 68, 0.4)',
+        'ds-live': '0 0 12px rgba(34, 197, 94, 0.4), 0 0 0 1px rgba(34, 197, 94, 0.3)',
+        'ds-live-bright': '0 0 24px rgba(34, 197, 94, 0.7), 0 0 0 2px rgba(34, 197, 94, 0.5)',
       },
       transitionTimingFunction: {
         'ds-out': 'cubic-bezier(0.16, 1, 0.3, 1)',
@@ -72,20 +98,20 @@ export default {
       },
       keyframes: {
         hitFlash: {
-          '0%': { boxShadow: '0 0 0 rgba(0,210,106,0)', transform: 'scale(1)' },
-          '30%': { boxShadow: '0 0 24px rgba(0,210,106,0.6)', transform: 'scale(1.03)' },
-          '100%': { boxShadow: '0 0 8px rgba(0,210,106,0.2)', transform: 'scale(1)' },
+          '0%': { boxShadow: '0 0 0 rgba(34,197,94,0)', transform: 'scale(1)' },
+          '30%': { boxShadow: '0 0 24px rgba(34,197,94,0.6)', transform: 'scale(1.03)' },
+          '100%': { boxShadow: '0 0 8px rgba(34,197,94,0.2)', transform: 'scale(1)' },
         },
         missFlash: {
-          '0%': { boxShadow: '0 0 0 rgba(255,59,92,0)', transform: 'translateX(0)' },
-          '20%': { boxShadow: '0 0 24px rgba(255,59,92,0.6)', transform: 'translateX(-3px)' },
+          '0%': { boxShadow: '0 0 0 rgba(239,68,68,0)', transform: 'translateX(0)' },
+          '20%': { boxShadow: '0 0 24px rgba(239,68,68,0.6)', transform: 'translateX(-3px)' },
           '40%': { transform: 'translateX(3px)' },
           '60%': { transform: 'translateX(-2px)' },
-          '100%': { boxShadow: '0 0 8px rgba(255,59,92,0.2)', transform: 'translateX(0)' },
+          '100%': { boxShadow: '0 0 8px rgba(239,68,68,0.2)', transform: 'translateX(0)' },
         },
         pulseRed: {
           '0%, 100%': { opacity: '1' },
-          '50%': { opacity: '0.5', color: '#FF3B5C' },
+          '50%': { opacity: '0.5', color: 'var(--ds-danger)' },
         },
         scorePop: {
           '0%': { transform: 'scale(1)' },
@@ -98,10 +124,10 @@ export default {
         },
         liveGlow: {
           '0%, 100%': {
-            boxShadow: '0 0 10px rgba(0, 210, 106, 0.3), 0 0 0 1px rgba(0, 210, 106, 0.25)',
+            boxShadow: '0 0 10px rgba(34, 197, 94, 0.3), 0 0 0 1px rgba(34, 197, 94, 0.25)',
           },
           '50%': {
-            boxShadow: '0 0 28px rgba(0, 210, 106, 0.7), 0 0 0 2px rgba(0, 210, 106, 0.5)',
+            boxShadow: '0 0 28px rgba(34, 197, 94, 0.7), 0 0 0 2px rgba(34, 197, 94, 0.5)',
           },
         },
       },

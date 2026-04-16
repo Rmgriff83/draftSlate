@@ -263,13 +263,13 @@ const pairedSlots = computed(() => {
             <div class="text-center flex-1 flex flex-col items-center">
               <UserAvatar :avatar-url="homeTeam?.avatar_url" :name="homeTeam?.user_name || homeTeam?.team_name" size="md" />
               <p class="text-xs text-gray-400 mt-1 truncate max-w-full">{{ homeTeam?.team_name }}</p>
-              <p class="text-3xl font-black text-white animate-score-pop">{{ homeScore }}</p>
+              <p class="text-3xl font-black text-ds-text-primary animate-score-pop">{{ homeScore }}</p>
             </div>
             <span class="text-lg text-gray-500 font-bold">&mdash;</span>
             <div class="text-center flex-1 flex flex-col items-center">
               <UserAvatar :avatar-url="awayTeam?.avatar_url" :name="awayTeam?.user_name || awayTeam?.team_name" size="md" />
               <p class="text-xs text-gray-400 mt-1 truncate max-w-full">{{ awayTeam?.team_name }}</p>
-              <p class="text-3xl font-black text-white animate-score-pop">{{ awayScore }}</p>
+              <p class="text-3xl font-black text-ds-text-primary animate-score-pop">{{ awayScore }}</p>
             </div>
           </div>
 
@@ -323,7 +323,7 @@ const pairedSlots = computed(() => {
                 <div class="flex items-center gap-2">
                   <Icon icon="mdi:scale-balance" class="w-5 h-5 text-teal-400 shrink-0" />
                   <div class="flex-1 min-w-0">
-                    <p class="text-xs text-white">Line</p>
+                    <p class="text-xs text-ds-text-primary">Line</p>
                     <p class="text-[10px] text-gray-500 mt-0.5">{{ homeLockedStatus.locked }}/{{ homeLockedStatus.total }} starters locked</p>
                   </div>
                 </div>
@@ -337,7 +337,7 @@ const pairedSlots = computed(() => {
                     <Icon v-else icon="mdi:minus-circle" class="w-6 h-6 text-yellow-400" />
                   </div>
                 </template>
-                <p v-else class="text-[10px] font-mono font-bold mt-1 text-white">
+                <p v-else class="text-[10px] font-mono font-bold mt-1 text-ds-text-primary">
                   {{ homeAggAmerican != null ? formatOdds(homeAggAmerican) : '--' }}
                 </p>
               </div>
@@ -356,7 +356,7 @@ const pairedSlots = computed(() => {
                 <div class="flex items-center gap-2 flex-row-reverse">
                   <Icon icon="mdi:scale-balance" class="w-5 h-5 text-teal-400 shrink-0" />
                   <div class="flex-1 min-w-0">
-                    <p class="text-xs text-white">Line</p>
+                    <p class="text-xs text-ds-text-primary">Line</p>
                     <p class="text-[10px] text-gray-500 mt-0.5">{{ awayLockedStatus.locked }}/{{ awayLockedStatus.total }} starters locked</p>
                   </div>
                 </div>
@@ -370,7 +370,7 @@ const pairedSlots = computed(() => {
                     <Icon v-else icon="mdi:minus-circle" class="w-6 h-6 text-yellow-400" />
                   </div>
                 </template>
-                <p v-else class="text-[10px] font-mono font-bold mt-1 text-white">
+                <p v-else class="text-[10px] font-mono font-bold mt-1 text-ds-text-primary">
                   {{ awayAggAmerican != null ? formatOdds(awayAggAmerican) : '--' }}
                 </p>
               </div>
@@ -380,7 +380,7 @@ const pairedSlots = computed(() => {
           <template v-for="row in pairedSlots" :key="row.isHeader ? row.slotType : row.key">
             <!-- Type section header -->
             <div v-if="row.isHeader" class="pt-2 pb-0.5 px-1">
-              <span :class="['text-[10px] font-bold px-1.5 py-0.5 rounded', typeBadgeClasses[row.slotType] || 'bg-gray-600 text-gray-300']">
+              <span :class="['text-[10px] font-bold px-1.5 py-0.5 rounded', typeBadgeClasses[row.slotType] || 'bg-gray-600 text-ds-text-secondary']">
                 {{ typeLabels[row.slotType] || row.slotType }}
               </span>
             </div>
@@ -413,14 +413,14 @@ const pairedSlots = computed(() => {
                   <div class="flex items-start gap-2">
                     <PickImage :pick="row.home.pick_selection" size="sm" />
                     <div class="flex-1 min-w-0">
-                      <p class="text-xs text-white truncate">{{ row.home.pick_selection?.description }}</p>
+                      <p class="text-xs text-ds-text-primary truncate">{{ row.home.pick_selection?.description }}</p>
                       <p class="text-[10px] text-gray-500 truncate mt-0.5">
                         {{ row.home.pick_selection?.game_display }}
                         <span v-if="formatGameTime(row.home.pick_selection?.game_time)"> · {{ formatGameTime(row.home.pick_selection?.game_time) }}</span>
                       </p>
                     </div>
                   </div>
-                  <p v-if="pickIsGraded(row.home) && !pickIsLive(row.home) && pickResultText(row.home)" class="text-[10px] font-mono text-gray-300 mt-0.5">
+                  <p v-if="pickIsGraded(row.home) && !pickIsLive(row.home) && pickResultText(row.home)" class="text-[10px] font-mono text-ds-text-secondary mt-0.5">
                     {{ pickResultText(row.home) }}
                   </p>
                   <div v-if="pickIsLive(row.home) && pickLiveScore(row.home)" class="mt-1">
@@ -489,14 +489,14 @@ const pairedSlots = computed(() => {
                   <div class="flex items-start gap-2 flex-row-reverse">
                     <PickImage :pick="row.away.pick_selection" size="sm" />
                     <div class="flex-1 min-w-0">
-                      <p class="text-xs text-white truncate">{{ row.away.pick_selection?.description }}</p>
+                      <p class="text-xs text-ds-text-primary truncate">{{ row.away.pick_selection?.description }}</p>
                       <p class="text-[10px] text-gray-500 truncate mt-0.5">
                         {{ row.away.pick_selection?.game_display }}
                         <span v-if="formatGameTime(row.away.pick_selection?.game_time)"> · {{ formatGameTime(row.away.pick_selection?.game_time) }}</span>
                       </p>
                     </div>
                   </div>
-                  <p v-if="pickIsGraded(row.away) && !pickIsLive(row.away) && pickResultText(row.away)" class="text-[10px] font-mono text-gray-300 mt-0.5">
+                  <p v-if="pickIsGraded(row.away) && !pickIsLive(row.away) && pickResultText(row.away)" class="text-[10px] font-mono text-ds-text-secondary mt-0.5">
                     {{ pickResultText(row.away) }}
                   </p>
                   <div v-if="pickIsLive(row.away) && pickLiveScore(row.away)" class="mt-1">
